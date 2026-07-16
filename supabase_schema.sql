@@ -60,6 +60,7 @@ create table public.matches (
   scheduled_at timestamptz,
   winner_id uuid references public.tournament_participants(id) on delete set null,
   base_odds jsonb not null default '{}'::jsonb,
+  elo_processed boolean not null default false,
   created_at timestamptz not null default now()
 );
 

@@ -127,6 +127,7 @@
       <div class="grid">
         <div><label>Nombre</label><input id="tournamentName"></div>
         <div><label>Formato</label><select id="tournamentFormat"><option value="1v1">1 vs 1</option><option value="2v2">2 vs 2</option><option value="1v1-double">1 vs 1 doble</option></select></div>
+        <div><label>Cantidad de participantes / equipos</label><input id="tournamentParticipants" type="number" min="2" max="32" value="8"></div>
         <div><label>Grupos</label><input id="tournamentGroups" type="number" min="1" value="2"></div>
         <div><label>Clasifican por grupo</label><input id="qualifyPerGroup" type="number" min="1" value="2"></div>
       </div>
@@ -137,17 +138,16 @@
       <div id="tournamentAdminList" class="grid"></div>
     </div>
     <div class="panel" id="participantPanel" hidden>
-      <h2>Participantes</h2>
+      <h2>Participantes del torneo</h2>
       <div class="row">
         <div><label>Torneo</label><select id="adminTournamentSelect"></select></div>
-        <div><label>Tipo</label><select id="participantKind"><option value="account">Cuenta</option><option value="bot">Bot</option><option value="team">Equipo 2v2</option></select></div>
-        <div><label>Cuenta / nombre</label><select id="participantAccount"></select><input id="participantBot" hidden placeholder="Nombre del bot"></div>
-        <div id="teamSecondWrap" hidden><label>Segundo integrante</label><select id="participantSecondAccount"></select></div>
-        <div><label>Grupo</label><input id="participantGroup" type="number" min="1" value="1"></div>
-        <button id="addParticipant">Agregar</button>
+        <button id="loadParticipantCards" class="secondary">Cargar tarjetas</button>
       </div>
+      <p class="muted">Cada tarjeta representa un participante o equipo. Selecciona una cuenta creada o usa un bot, y asigna su grupo.</p>
+      <div id="participantCards" class="participant-cards" style="margin-top:14px"></div>
+      <button id="saveParticipants" style="margin-top:12px">Guardar participantes</button>
+      <button id="generateFixture" class="secondary" style="margin-top:12px">Generar fase de grupos</button>
       <div id="participantList" style="margin-top:14px"></div>
-      <button id="generateFixture" style="margin-top:12px">Generar fase de grupos</button>
     </div>
     <div class="panel" id="matchAdminPanel" hidden>
       <h2>Partidas y eliminatorias</h2>

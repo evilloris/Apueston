@@ -26,11 +26,59 @@ function randomPassword(){
 function todayBolivia(){
   return new Intl.DateTimeFormat("en-CA",{timeZone:CONFIG.DAILY_WHEEL_TIMEZONE,year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 }
+const ELO_START = 1000;
+const ELO_K = 32;
+const ELO_TOURNEY_BONUS_WIN = 30;
+const ELO_TOURNEY_BONUS_LOSE = 10;
+
 function expected(a,b){ return 1/(1+10**((b-a)/400)); }
+function clampOdds(v){ return Math.max(1.0001, Math.min(99, +Number(v).toFixed(4))); }
+function koMarginMultiplier(winnerKos, loserKos){
+  const margin = Math.max(0, Number(winnerKos||0)-Number(loserKos||0));
+  return 1 + Math.min(.5, margin*.08);
+}
 function oddsFromElo(a,b){
-  const pa=Math.max(.08,Math.min(.92,expected(a,b)));
-  const margin=.90;
-  return {a:+(margin/pa).toFixed(2), b:+(margin/(1-pa)).toFixed(2)};
+  const pa=Math.max(.04,Math.min(.96,expected(a,b)));
+  return {a:clampOdds(1/pa/.90), b:clampOdds(1/(1-pa)/.90)};
+}
+function diffCurveMultiplier(diff){
+  const d=Math.abs(Number(diff||0));
+  if(d<=1)return 1+d*.07;
+  if(d===2)return 1.22;
+  if(d===3)return 1.48;
+  if(d===4)return 1.85;
+  return 2.35+(d-5)*.30;
+}
+function crowdFactor(share){
+  const centered=(Number(share||.5)-.5)*2;
+  return Math.max(.72,Math.min(1.42,1-centered*.28));
+}
+function generateSeedOrder(n){
+  let seeds=[1,2];
+  while(seeds.length<n){
+    const total=seeds.length*2+1,next=[];
+    seeds.forEach(s=>{next.push(s);next.push(total-s)});
+    seeds=next;
+  }
+  return seeds;
+}
+function roundRobinPairs(players){
+  let ids=players.map(p=>p.id);
+  if(ids.length%2)ids.push(null);
+  const rounds=[],n=ids.length,half=n/2;
+  let arr=[...ids];
+  for(let r=0;r<n-1;r++){
+    const pairs=[];
+    for(let i=0;i<half;i++){
+      const a=arr[i],b=arr[n-1-i];
+      if(a&&b)pairs.push([a,b]);
+    }
+    rounds.push(pairs);
+    const fixed=arr[0],rest=arr.slice(1);
+    rest.unshift(rest.pop());
+    arr=[fixed,...rest];
+  }
+  return rounds;
 }
 function scoreOdds(eloA,eloB,a,b){
   const expectedDiff=(eloA-eloB)/180;
@@ -117,15 +165,36 @@ function renderTournamentSelects(){
   }
   $("#participantPanel").hidden=!$("#adminTournamentSelect").value;
   $("#matchAdminPanel").hidden=!$("#adminTournamentSelect").value;
+  if($("#adminTournamentSelect").value) renderParticipantCards();
 }
 $("#betTournamentSelect").onchange=renderBetMatches;
 $("#resultTournamentSelect").onchange=renderResults;
 $("#adminTournamentSelect").onchange=()=>{renderParticipantList();renderMatchAdmin();$("#participantPanel").hidden=false;$("#matchAdminPanel").hidden=false};
 
 function dynamicOdds(match){
-  const a=state.participants.find(p=>p.id===match.side_a),b=state.participants.find(p=>p.id===match.side_b);
+  const a=state.participants.find(p=>p.id===match.side_a);
+  const b=state.participants.find(p=>p.id===match.side_b);
   const ra=rankingFor(a?.display_name).elo, rb=rankingFor(b?.display_name).elo;
-  return oddsFromElo(ra,rb);
+  let odds=oddsFromElo(ra,rb);
+
+  if(["live","finished"].includes(match.status) && match.score_a!==null && match.score_b!==null){
+    const diff=Number(match.score_a||0)-Number(match.score_b||0);
+    if(diff){
+      const mult=diffCurveMultiplier(diff);
+      if(diff>0){odds.a=clampOdds(odds.a/mult);odds.b=clampOdds(odds.b*mult)}
+      else{odds.b=clampOdds(odds.b/mult);odds.a=clampOdds(odds.a*mult)}
+    }
+  }
+
+  const winnerBets=state.bets.filter(bet=>bet.match_id===match.id&&bet.bet_type==="winner"&&bet.status==="pending");
+  const poolA=winnerBets.filter(bet=>bet.selection?.participant_id===match.side_a).reduce((s,b)=>s+Number(b.stake||0),0);
+  const poolB=winnerBets.filter(bet=>bet.selection?.participant_id===match.side_b).reduce((s,b)=>s+Number(b.stake||0),0);
+  const total=poolA+poolB;
+  if(total>0){
+    odds.a=clampOdds(odds.a*crowdFactor(poolA/total));
+    odds.b=clampOdds(odds.b*crowdFactor(poolB/total));
+  }
+  return odds;
 }
 function renderBetMatches(){
   const tid=$("#betTournamentSelect").value;
@@ -154,7 +223,22 @@ function renderBetFields(){
   if(type==="winner"){
     $("#betDynamicFields").innerHTML=`<label>Selección</label><select id="betSelection"><option value="${m.side_a}">${esc(a)}</option><option value="${m.side_b}">${esc(b)}</option></select>`;
   }else if(type==="handicap"){
-    $("#betDynamicFields").innerHTML=`<label>Selección</label><select id="betSelection"><option value="${m.side_a}|-1.5">${esc(a)} -1.5</option><option value="${m.side_b}|+1.5">${esc(b)} +1.5</option></select>`;
+    const ra=rankingFor(a).elo, rb=rankingFor(b).elo;
+    const favoriteA=ra>=rb;
+    const lines=[.5,1.5,2.5];
+    const options=[];
+    lines.forEach((line,idx)=>{
+      const favOdds=clampOdds(1.55+idx*.40);
+      const dogOdds=clampOdds(2.25+idx*.65);
+      if(favoriteA){
+        options.push(`<option data-odds="${favOdds}" value="${m.side_a}|-${line}">${esc(a)} -${line} · x${favOdds}</option>`);
+        options.push(`<option data-odds="${dogOdds}" value="${m.side_b}|+${line}">${esc(b)} +${line} · x${dogOdds}</option>`);
+      }else{
+        options.push(`<option data-odds="${favOdds}" value="${m.side_b}|-${line}">${esc(b)} -${line} · x${favOdds}</option>`);
+        options.push(`<option data-odds="${dogOdds}" value="${m.side_a}|+${line}">${esc(a)} +${line} · x${dogOdds}</option>`);
+      }
+    });
+    $("#betDynamicFields").innerHTML=`<label>Selección de hándicap</label><select id="betSelection">${options.join("")}</select>`;
   }else{
     $("#betDynamicFields").innerHTML=`<div class="row"><div><label>${esc(a)}</label><input id="scoreA" type="number" min="0" value="6"></div><div><label>${esc(b)}</label><input id="scoreB" type="number" min="0" value="4"></div></div>`;
   }
@@ -164,7 +248,10 @@ function renderBetFields(){
 function currentBetOdds(){
   const m=state.matches.find(x=>x.id===$("#betMatchId").value),type=$("#betType").value,o=dynamicOdds(m);
   if(type==="winner") return $("#betSelection").value===m.side_a?o.a:o.b;
-  if(type==="handicap") return 1.9;
+  if(type==="handicap"){
+    const option=$("#betSelection").selectedOptions[0];
+    return clampOdds(option?.dataset.odds || 1.9);
+  }
   const a=state.participants.find(p=>p.id===m.side_a),b=state.participants.find(p=>p.id===m.side_b);
   return scoreOdds(rankingFor(a.display_name).elo,rankingFor(b.display_name).elo,+$("#scoreA").value,+$("#scoreB").value);
 }
@@ -248,61 +335,171 @@ async function changeCredits(id,sign){
 }
 
 $("#createTournament").onclick=async()=>{
-  const name=$("#tournamentName").value.trim(),format=$("#tournamentFormat").value,groups=+$("#tournamentGroups").value,qualify=+$("#qualifyPerGroup").value;
-  if(!name||groups<1||qualify<1){alert("Datos inválidos.");return}
-  const {error}=await supabase.from("tournaments").insert({name,format,config:{groups,qualify_per_group:qualify,third_place:true,repechage:false}});
-  if(error){alert(error.message);return}$("#tournamentName").value="";await loadAll();
+  const name=$("#tournamentName").value.trim();
+  const format=$("#tournamentFormat").value;
+  const participantCount=+$("#tournamentParticipants").value;
+  const groups=+$("#tournamentGroups").value;
+  const qualify=+$("#qualifyPerGroup").value;
+  if(!name||participantCount<2||participantCount>32||groups<1||groups>participantCount||qualify<1){
+    alert("Revisa el nombre, participantes, grupos y clasificados.");
+    return;
+  }
+  const {data,error}=await supabase.from("tournaments").insert({
+    name,format,
+    config:{groups,qualify_per_group:qualify,participant_count:participantCount,third_place:true,repechage:false}
+  }).select().single();
+  if(error){alert(error.message);return}
+  $("#tournamentName").value="";
+  await loadAll();
+  $("#adminTournamentSelect").value=data.id;
+  $("#participantPanel").hidden=false;
+  $("#matchAdminPanel").hidden=false;
+  renderParticipantCards();
+  renderParticipantList();
+  renderMatchAdmin();
 };
 function renderTournamentsAdmin(){
   $("#tournamentAdminList").innerHTML=state.tournaments.map(t=>`<div class="card"><strong>${esc(t.name)}</strong><div class="muted">${esc(t.format)} · ${esc(t.status)}</div><button class="secondary" data-edit-tournament="${t.id}">Administrar</button> <button class="danger" data-delete-tournament="${t.id}">Eliminar</button></div>`).join("")||'<div class="muted">Sin torneos.</div>';
   $$("[data-edit-tournament]").forEach(b=>b.onclick=()=>{$("#adminTournamentSelect").value=b.dataset.editTournament;$("#participantPanel").hidden=false;$("#matchAdminPanel").hidden=false;renderParticipantList();renderMatchAdmin()});
   $$("[data-delete-tournament]").forEach(b=>b.onclick=async()=>{if(confirm("¿Eliminar torneo completo?")){await supabase.from("tournaments").delete().eq("id",b.dataset.deleteTournament);loadAll()}});
 }
-$("#participantKind").onchange=()=>{
-  const k=$("#participantKind").value;
-  $("#participantAccount").hidden=k==="bot";$("#participantBot").hidden=k!=="bot";$("#teamSecondWrap").hidden=k!=="team";
-};
-function accountOptionHtml(){return '<option value="">— Selecciona —</option>'+state.accounts.map(a=>`<option value="${a.id}">${esc(a.username)}</option>`).join("")}
-function renderParticipantList(){
-  $("#participantAccount").innerHTML=accountOptionHtml();$("#participantSecondAccount").innerHTML=accountOptionHtml();
-  const tid=$("#adminTournamentSelect").value;
-  const ps=state.participants.filter(p=>p.tournament_id===tid);
-  $("#participantList").innerHTML=ps.map(p=>`<div class="card">${esc(p.display_name)} · grupo ${p.group_no} <button class="danger" data-delete-participant="${p.id}">Quitar</button></div>`).join("")||'<div class="muted">Sin participantes.</div>';
-  $$("[data-delete-participant]").forEach(b=>b.onclick=async()=>{await supabase.from("tournament_participants").delete().eq("id",b.dataset.deleteParticipant);loadAll()});
+
+function accountOptionHtml(selected=""){
+  return '<option value="">— Selecciona cuenta —</option>'+
+    state.accounts.map(a=>`<option value="${a.id}" ${a.id===selected?"selected":""}>${esc(a.username)}</option>`).join("");
 }
-$("#addParticipant").onclick=async()=>{
-  const tid=$("#adminTournamentSelect").value,kind=$("#participantKind").value,group_no=+$("#participantGroup").value;
-  if(!tid)return;
-  let display_name,members=[];
-  if(kind==="bot"){display_name=$("#participantBot").value.trim();members=[{name:display_name,type:"bot"}]}
-  else if(kind==="team"){
-    const a=state.accounts.find(x=>x.id===$("#participantAccount").value),b=state.accounts.find(x=>x.id===$("#participantSecondAccount").value);
-    if(!a||!b||a.id===b.id){alert("Selecciona dos cuentas distintas.");return}
-    display_name=`${a.username} + ${b.username}`;members=[{id:a.id,name:a.username,type:"account"},{id:b.id,name:b.username,type:"account"}];
-  }else{
-    const a=state.accounts.find(x=>x.id===$("#participantAccount").value);if(!a){alert("Selecciona una cuenta.");return}
-    display_name=a.username;members=[{id:a.id,name:a.username,type:"account"}];
+function participantCardMember(slotIndex, memberIndex, savedMember){
+  const key=`${slotIndex}-${memberIndex}`;
+  const isBot=savedMember?.type==="bot";
+  const accountId=savedMember?.id||"";
+  const botName=isBot?(savedMember?.name||""):"";
+  return `<div class="participant-member" data-member-key="${key}">
+    <label>${memberIndex===0?"Jugador":"Segundo integrante"}</label>
+    <select data-slot-kind="${key}">
+      <option value="account" ${!isBot?"selected":""}>Cuenta creada</option>
+      <option value="bot" ${isBot?"selected":""}>Bot</option>
+    </select>
+    <select data-slot-account="${key}" ${isBot?"hidden":""}>${accountOptionHtml(accountId)}</select>
+    <input data-slot-bot="${key}" ${!isBot?"hidden":""} value="${esc(botName)}" placeholder="Nombre del bot">
+  </div>`;
+}
+function renderParticipantCards(){
+  const tid=$("#adminTournamentSelect").value;
+  const tournament=state.tournaments.find(t=>t.id===tid);
+  if(!tournament){$("#participantCards").innerHTML="";return}
+  const count=Number(tournament.config?.participant_count||2);
+  const groups=Number(tournament.config?.groups||1);
+  const existing=state.participants.filter(p=>p.tournament_id===tid);
+  const cards=[];
+  for(let i=0;i<count;i++){
+    const saved=existing[i];
+    const members=Array.isArray(saved?.members)?saved.members:[];
+    cards.push(`<div class="participant-slot" data-participant-slot="${i}">
+      <div class="participant-slot-title">${tournament.format==="2v2"?"Equipo":"Jugador"} ${i+1}</div>
+      ${participantCardMember(i,0,members[0])}
+      ${tournament.format==="2v2"?participantCardMember(i,1,members[1]):""}
+      <div style="margin-top:10px"><label>Grupo</label>
+        <select data-slot-group="${i}">
+          ${Array.from({length:groups},(_,g)=>`<option value="${g+1}" ${(saved?.group_no||(i%groups)+1)===g+1?"selected":""}>Grupo ${String.fromCharCode(65+g)}</option>`).join("")}
+        </select>
+      </div>
+    </div>`);
   }
-  if(!display_name){alert("Nombre inválido.");return}
-  const seed_elo=Math.round(members.reduce((s,m)=>s+rankingFor(m.name).elo,0)/members.length);
-  const {error}=await supabase.from("tournament_participants").insert({tournament_id:tid,display_name,kind,members,group_no,seed_elo});
-  if(error){alert(error.message);return}await loadAll();$("#adminTournamentSelect").value=tid;renderParticipantList();
+  $("#participantCards").innerHTML=cards.join("");
+  $$("[data-slot-kind]").forEach(sel=>sel.onchange=()=>{
+    const key=sel.dataset.slotKind;
+    document.querySelector(`[data-slot-account="${key}"]`).hidden=sel.value==="bot";
+    document.querySelector(`[data-slot-bot="${key}"]`).hidden=sel.value!=="bot";
+  });
+}
+$("#loadParticipantCards").onclick=renderParticipantCards;
+$("#adminTournamentSelect").onchange=()=>{
+  $("#participantPanel").hidden=!$("#adminTournamentSelect").value;
+  $("#matchAdminPanel").hidden=!$("#adminTournamentSelect").value;
+  renderParticipantCards();renderParticipantList();renderMatchAdmin();
 };
-$("#generateFixture").onclick=async()=>{
-  const tid=$("#adminTournamentSelect").value,t=state.tournaments.find(x=>x.id===tid),ps=state.participants.filter(p=>p.tournament_id===tid);
-  if(!t||ps.length<2){alert("Faltan participantes.");return}
-  await supabase.from("matches").delete().eq("tournament_id",tid);
-  const rows=[];let round=1;
-  const groups=[...new Set(ps.map(p=>p.group_no))];
-  for(const g of groups){
-    const gp=ps.filter(p=>p.group_no===g);
-    for(let i=0;i<gp.length;i++)for(let j=i+1;j<gp.length;j++){
-      rows.push({tournament_id:tid,phase:"group",round_no:round++,group_no:g,side_a:gp[i].id,side_b:gp[j].id});
-      if(t.format==="1v1-double")rows.push({tournament_id:tid,phase:"group",round_no:round++,group_no:g,side_a:gp[j].id,side_b:gp[i].id});
+$("#saveParticipants").onclick=async()=>{
+  const tid=$("#adminTournamentSelect").value;
+  const tournament=state.tournaments.find(t=>t.id===tid);
+  if(!tournament)return;
+  const cards=$$("[data-participant-slot]");
+  const rows=[],used=new Set();
+
+  for(const card of cards){
+    const slot=card.dataset.participantSlot;
+    const memberKinds=$$("[data-slot-kind]",card);
+    const members=[];
+    for(const kindSel of memberKinds){
+      const key=kindSel.dataset.slotKind;
+      let member;
+      if(kindSel.value==="bot"){
+        const name=document.querySelector(`[data-slot-bot="${key}"]`).value.trim();
+        if(!name){alert(`Escribe el nombre del bot en la tarjeta ${Number(slot)+1}.`);return}
+        member={name,type:"bot"};
+      }else{
+        const id=document.querySelector(`[data-slot-account="${key}"]`).value;
+        const account=state.accounts.find(a=>a.id===id);
+        if(!account){alert(`Selecciona una cuenta en la tarjeta ${Number(slot)+1}.`);return}
+        member={id:account.id,name:account.username,type:"account"};
+      }
+      const unique=member.type+":"+String(member.id||member.name).toLowerCase();
+      if(used.has(unique)){alert(`El participante ${member.name} está repetido.`);return}
+      used.add(unique);members.push(member);
     }
+    const display_name=tournament.format==="2v2"?members.map(m=>m.name).join(" + "):members[0].name;
+    const seed_elo=Math.round(members.reduce((s,m)=>s+rankingFor(m.name).elo,0)/members.length);
+    rows.push({
+      tournament_id:tid,
+      display_name,
+      kind:tournament.format==="2v2"?"team":members[0].type,
+      members,
+      group_no:+card.querySelector(`[data-slot-group="${slot}"]`).value,
+      seed_elo
+    });
   }
-  const {error}=await supabase.from("matches").insert(rows);if(error){alert(error.message);return}
-  await supabase.from("tournaments").update({status:"active"}).eq("id",tid);await loadAll();$("#adminTournamentSelect").value=tid;renderMatchAdmin();
+
+  await supabase.from("tournament_participants").delete().eq("tournament_id",tid);
+  const {error}=await supabase.from("tournament_participants").insert(rows);
+  if(error){alert(error.message);return}
+  await loadAll();
+  $("#adminTournamentSelect").value=tid;
+  renderParticipantCards();renderParticipantList();
+  alert("Participantes guardados.");
+};
+function renderParticipantList(){
+  const tid=$("#adminTournamentSelect").value;
+  const ps=state.participants.filter(p=>p.tournament_id===tid).sort((a,b)=>a.group_no-b.group_no||b.seed_elo-a.seed_elo);
+  $("#participantList").innerHTML=ps.map(p=>`<div class="card"><strong>${esc(p.display_name)}</strong><div class="muted">Grupo ${String.fromCharCode(64+p.group_no)} · ELO inicial ${p.seed_elo}</div></div>`).join("")||'<div class="muted">Completa y guarda las tarjetas.</div>';
+}
+
+$("#generateFixture").onclick=async()=>{
+  const tid=$("#adminTournamentSelect").value;
+  const t=state.tournaments.find(x=>x.id===tid);
+  const ps=state.participants.filter(p=>p.tournament_id===tid);
+  const expectedCount=Number(t?.config?.participant_count||0);
+  if(!t||ps.length!==expectedCount){
+    alert(`Debes guardar exactamente ${expectedCount} participantes antes de generar la fase.`);
+    return;
+  }
+  await supabase.from("matches").delete().eq("tournament_id",tid);
+  const rows=[];
+  const groups=[...new Set(ps.map(p=>p.group_no))].sort((a,b)=>a-b);
+  for(const groupNo of groups){
+    const gp=ps.filter(p=>p.group_no===groupNo).sort((a,b)=>b.seed_elo-a.seed_elo);
+    const rounds=roundRobinPairs(gp);
+    rounds.forEach((pairs,r)=>{
+      pairs.forEach(([a,b])=>{
+        rows.push({tournament_id:tid,phase:"group",round_no:r+1,group_no:groupNo,side_a:a,side_b:b});
+        if(t.format==="1v1-double"){
+          rows.push({tournament_id:tid,phase:"group",round_no:r+1+rounds.length,group_no:groupNo,side_a:b,side_b:a});
+        }
+      });
+    });
+  }
+  const {error}=await supabase.from("matches").insert(rows);
+  if(error){alert(error.message);return}
+  await supabase.from("tournaments").update({status:"active"}).eq("id",tid);
+  await loadAll();$("#adminTournamentSelect").value=tid;renderMatchAdmin();
 };
 function renderMatchAdmin(){
   const tid=$("#adminTournamentSelect").value;
@@ -315,17 +512,60 @@ function renderMatchAdmin(){
   $$("[data-save-match]").forEach(b=>b.onclick=()=>saveMatch(b.dataset.saveMatch));
 }
 async function saveMatch(id){
-  const m=state.matches.find(x=>x.id===id),a=+document.querySelector(`[data-score-a="${id}"]`).value,b=+document.querySelector(`[data-score-b="${id}"]`).value,s=document.querySelector(`[data-schedule="${id}"]`).value;
-  const finished=a!==b&&(a>0||b>0),winner=finished?(a>b?m.side_a:m.side_b):null;
-  await supabase.from("matches").update({score_a:a,score_b:b,scheduled_at:s?new Date(s).toISOString():null,status:finished?"finished":"scheduled",winner_id:winner}).eq("id",id);
-  if(finished)await updateRankingAfterMatch(m,a,b,winner);await settleBets(id);await loadAll();$("#adminTournamentSelect").value=m.tournament_id;renderMatchAdmin();
+  const m=state.matches.find(x=>x.id===id);
+  const a=+document.querySelector(`[data-score-a="${id}"]`).value;
+  const b=+document.querySelector(`[data-score-b="${id}"]`).value;
+  const s=document.querySelector(`[data-schedule="${id}"]`).value;
+  const finished=a!==b&&(a>0||b>0);
+  const winner=finished?(a>b?m.side_a:m.side_b):null;
+
+  const update={
+    score_a:a,score_b:b,
+    scheduled_at:s?new Date(s).toISOString():null,
+    status:finished?"finished":"scheduled",
+    winner_id:winner
+  };
+  const {error}=await supabase.from("matches").update(update).eq("id",id);
+  if(error){alert(error.message);return}
+
+  if(finished&&!m.elo_processed){
+    await updateRankingAfterMatch(m,a,b,winner);
+    await supabase.from("matches").update({elo_processed:true}).eq("id",id);
+  }
+  await settleBets(id);
+  await loadAll();
+  $("#adminTournamentSelect").value=m.tournament_id;
+  renderMatchAdmin();
 }
 async function updateRankingAfterMatch(m,a,b,winner){
-  const pa=state.participants.find(p=>p.id===m.side_a),pb=state.participants.find(p=>p.id===m.side_b);
-  for(const [p,won,kf,ka,opp] of [[pa,winner===m.side_a,a,b,pb],[pb,winner===m.side_b,b,a,pa]]){
-    const old=rankingFor(p.display_name),oppR=rankingFor(opp.display_name),delta=Math.round(32*((won?1:0)-expected(old.elo,oppR.elo)));
-    await supabase.from("rankings").upsert({name:p.display_name,elo:old.elo+delta,wins:old.wins+(won?1:0),losses:old.losses+(won?0:1),kos_for:old.kos_for+kf,kos_against:old.kos_against+ka});
-  }
+  const pa=state.participants.find(p=>p.id===m.side_a);
+  const pb=state.participants.find(p=>p.id===m.side_b);
+  const ra=rankingFor(pa.display_name), rb=rankingFor(pb.display_name);
+  const aWon=winner===m.side_a;
+  const winnerRating=aWon?ra.elo:rb.elo;
+  const loserRating=aWon?rb.elo:ra.elo;
+  const multiplier=koMarginMultiplier(aWon?a:b,aWon?b:a);
+  const base=Math.round(ELO_K*(1-expected(winnerRating,loserRating))*multiplier);
+  const winnerDelta=base+ELO_TOURNEY_BONUS_WIN;
+  const loserDelta=-(base+ELO_TOURNEY_BONUS_LOSE);
+
+  const nextA={
+    name:pa.display_name,
+    elo:Math.max(100,ra.elo+(aWon?winnerDelta:loserDelta)),
+    wins:ra.wins+(aWon?1:0),
+    losses:ra.losses+(aWon?0:1),
+    kos_for:ra.kos_for+a,
+    kos_against:ra.kos_against+b
+  };
+  const nextB={
+    name:pb.display_name,
+    elo:Math.max(100,rb.elo+(aWon?loserDelta:winnerDelta)),
+    wins:rb.wins+(aWon?0:1),
+    losses:rb.losses+(aWon?1:0),
+    kos_for:rb.kos_for+b,
+    kos_against:rb.kos_against+a
+  };
+  await supabase.from("rankings").upsert([nextA,nextB]);
 }
 async function settleBets(matchId){
   const m=(await supabase.from("matches").select("*").eq("id",matchId).single()).data;
@@ -344,17 +584,37 @@ async function settleBets(matchId){
   }
 }
 $("#generateBracket").onclick=async()=>{
-  const tid=$("#adminTournamentSelect").value,t=state.tournaments.find(x=>x.id===tid);
+  const tid=$("#adminTournamentSelect").value;
+  const t=state.tournaments.find(x=>x.id===tid);
   const groupMatches=state.matches.filter(m=>m.tournament_id===tid&&m.phase==="group");
-  const pending=groupMatches.filter(m=>m.status!=="finished"&&m.status!=="walkover");
+  const pending=groupMatches.filter(m=>!["finished","walkover"].includes(m.status));
   if(pending.length){$("#bracketStatus").textContent=`Faltan ${pending.length} partidas de grupos.`;return}
-  const q=t.config.qualify_per_group||2,groups=[...new Set(state.participants.filter(p=>p.tournament_id===tid).map(p=>p.group_no))];
+
+  const q=Number(t.config.qualify_per_group||2);
+  const groups=[...new Set(state.participants.filter(p=>p.tournament_id===tid).map(p=>p.group_no))].sort((a,b)=>a-b);
+  const standings=standingsFor(tid);
   const qualifiers=[];
-  for(const g of groups)qualifiers.push(...standingsFor(tid).filter(x=>x.group_no===g).slice(0,q));
-  if(![2,4,8,16].includes(qualifiers.length)){alert("La cantidad total de clasificados debe ser 2, 4, 8 o 16.");return}
-  const rows=[];let phase=qualifiers.length===2?"final":qualifiers.length===4?"semifinal":"quarterfinal";
-  for(let i=0;i<qualifiers.length;i+=2)rows.push({tournament_id:tid,phase,round_no:1,side_a:qualifiers[i].id,side_b:qualifiers[i+1].id});
-  await supabase.from("matches").insert(rows);$("#bracketStatus").textContent="Eliminatorias generadas.";await loadAll();$("#adminTournamentSelect").value=tid;renderMatchAdmin();
+  for(let rank=0;rank<q;rank++){
+    for(const groupNo of groups){
+      const p=standings.filter(x=>x.group_no===groupNo)[rank];
+      if(p)qualifiers.push(p);
+    }
+  }
+  if(![2,4,8,16].includes(qualifiers.length)){
+    alert("La cantidad total de clasificados debe ser 2, 4, 8 o 16.");
+    return;
+  }
+
+  const ordered=generateSeedOrder(qualifiers.length).map(seed=>qualifiers[seed-1]);
+  const phase=qualifiers.length===2?"final":qualifiers.length===4?"semifinal":qualifiers.length===8?"quarterfinal":"quarterfinal";
+  const rows=[];
+  for(let i=0;i<ordered.length;i+=2){
+    rows.push({tournament_id:tid,phase,round_no:1,side_a:ordered[i].id,side_b:ordered[i+1].id});
+  }
+  const {error}=await supabase.from("matches").insert(rows);
+  if(error){alert(error.message);return}
+  $("#bracketStatus").textContent="Eliminatorias generadas según clasificación y seeding.";
+  await loadAll();$("#adminTournamentSelect").value=tid;renderMatchAdmin();
 };
 
 const dailyPrizes=[
@@ -362,14 +622,58 @@ const dailyPrizes=[
   {label:"10 Caramelos Raros",weight:18},{label:"Pokémon shiny aleatorio",weight:2},
   {label:"Pokémon común aleatorio",weight:38},{label:"Legendario / mítico del día",weight:.2},{label:"Pseudolegendario del día",weight:.8}
 ];
-const paidPrizes=[
-  {label:"Pokémon común aleatorio",weight:46},{label:"Pokémon raro aleatorio",weight:24},
-  {label:"5 Caramelos Raros",weight:15},{label:"500 créditos",weight:10,credits:500},
-  {label:"Pokémon shiny aleatorio",weight:4},{label:"Legendario / mítico",weight:1}
-];
+const FULL_FULL_PRIZE_CATS = {
+  comun: { label: "Común", color: "#8A93A6" },
+  inicial: { label: "Inicial", color: "#8BE58B" },
+  pseudolegendario: { label: "Pseudolegendario", color: "#FF9FD1" },
+  legendario: { label: "Legendario", color: "#F2B705" },
+  sublegendario: { label: "Sublegendario", color: "#FF8C42" },
+  mitico: { label: "Mítico", color: "#E63946" },
+  ultraente: { label: "Ultraente", color: "#A26BFA" },
+  paradoja: { label: "Paradoja", color: "#4DD9E8" },
+};
+
+// Pool de premios: cada entrada = { name, catKey, weight, isPokemon, isJackpot }
+const FULL_FULL_PRIZE_POOL = [];
+["Pidgey", "Rattata", "Spearow", "Ekans", "Sandshrew", "Nidoran♀", "Nidoran♂", "Vulpix", "Zubat", "Oddish", "Paras", "Venonat", "Diglett", "Meowth", "Psyduck", "Mankey", "Growlithe", "Poliwag", "Abra", "Machop", "Bellsprout", "Tentacool", "Geodude", "Ponyta", "Slowpoke", "Magnemite", "Farfetch'd", "Doduo", "Seel", "Grimer", "Shellder", "Gastly", "Onix", "Drowzee", "Krabby", "Voltorb", "Exeggcute", "Cubone", "Lickitung", "Koffing", "Rhyhorn", "Tangela", "Horsea", "Goldeen", "Staryu", "Scyther", "Jynx", "Electabuzz", "Magmar", "Pinsir", "Tauros", "Magikarp", "Lapras", "Eevee", "Porygon", "Omanyte", "Kabuto", "Sentret", "Ledyba", "Spinarak", "Chinchou", "Pichu", "Cleffa", "Igglybuff", "Togepi", "Natu", "Mareep", "Sudowoodo", "Hoppip", "Aipom", "Sunkern", "Yanma", "Wooper", "Murkrow", "Misdreavus", "Wobbuffet", "Girafarig", "Pineco", "Dunsparce", "Gligar", "Snubbull", "Qwilfish", "Shuckle", "Heracross", "Teddiursa", "Slugma", "Swinub", "Corsola", "Remoraid", "Delibird", "Skarmory", "Houndour", "Phanpy", "Stantler", "Smeargle", "Smoochum", "Elekid", "Magby", "Miltank", "Poochyena", "Zigzagoon", "Wurmple", "Lotad", "Seedot", "Taillow", "Wingull", "Ralts", "Surskit", "Shroomish", "Slakoth", "Nincada", "Whismur", "Makuhita", "Nosepass", "Skitty", "Sableye", "Mawile", "Aron", "Meditite", "Electrike", "Plusle", "Minun", "Volbeat", "Illumise", "Roselia", "Gulpin", "Carvanha", "Wailmer", "Numel", "Spoink", "Cacnea", "Swablu", "Corphish", "Baltoy", "Lileep", "Anorith", "Feebas", "Castform", "Kecleon", "Shuppet", "Duskull", "Tropius", "Chimecho", "Absol", "Wynaut", "Snorunt", "Spheal", "Clamperl", "Relicanth", "Luvdisc", "Bidoof", "Kricketot", "Shinx", "Cranidos", "Shieldon", "Burmy", "Combee", "Pachirisu", "Buizel", "Cherubi", "Shellos", "Drifloon", "Buneary", "Glameow", "Stunky", "Bronzor", "Chatot", "Spiritomb", "Gible", "Riolu", "Hippopotas", "Skorupi", "Croagunk", "Carnivine", "Finneon", "Mantyke", "Snover", "Rotom", "Patrat", "Lillipup", "Purrloin", "Pansage", "Pansear", "Panpour", "Munna", "Pidove", "Blitzle", "Roggenrola", "Woobat", "Drilbur", "Audino", "Timburr", "Tympole", "Throh", "Sawk", "Sewaddle", "Venipede", "Cottonee", "Petilil", "Basculin", "Sandile", "Darumaka", "Maractus", "Dwebble", "Scraggy", "Sigilyph", "Yamask", "Tirtouga", "Archen", "Trubbish", "Minccino", "Gothita", "Solosis", "Ducklett", "Vanillite", "Deerling", "Emolga", "Karrablast", "Foongus", "Frillish", "Alomomola", "Joltik", "Ferroseed", "Klink", "Tynamo", "Elgyem", "Litwick", "Axew", "Cubchoo", "Cryogonal", "Shelmet", "Stunfisk", "Mienfoo", "Druddigon", "Golett", "Pawniard", "Bouffalant", "Rufflet", "Vullaby", "Heatmor", "Durant", "Bunnelby", "Fletchling", "Scatterbug", "Litleo", "Flabébé", "Skiddo", "Pancham", "Furfrou", "Espurr", "Honedge", "Spritzee", "Swirlix", "Inkay", "Binacle", "Skrelp", "Clauncher", "Helioptile", "Amaura", "Hawlucha", "Carbink", "Phantump", "Pumpkaboo", "Bergmite", "Noibat", "Grubbin", "Crabrawler", "Oricorio", "Cutiefly", "Rockruff", "Wishiwashi", "Mareanie", "Mudbray", "Dewpider", "Fomantis", "Morelull", "Salandit", "Stufful", "Bounsweet", "Comfey", "Oranguru", "Passimian", "Wimpod", "Sandygast", "Pyukumuku", "Togedemaru", "Bruxish", "Drampa", "Dhelmise", "Skwovet", "Rookidee", "Blipbug", "Nickit", "Gossifleur", "Wooloo", "Chewtle", "Yamper", "Rolycoly", "Applin", "Silicobra", "Cramorant", "Arrokuda", "Toxel", "Sizzlipede", "Clobbopus", "Sinistea", "Hatenna", "Impidimp", "Milcery", "Falinks", "Pincurchin", "Snom", "Stonjourner", "Eiscue", "Indeedee", "Morpeko", "Cufant", "Dracozolt", "Arctozolt", "Dracovish", "Arctovish", "Lechonk", "Tarountula", "Nymble", "Pawmi", "Tandemaus", "Fidough", "Smoliv", "Squawkabilly", "Nacli", "Charcadet", "Tadbulb", "Wattrel", "Maschiff", "Shroodle", "Bramblin", "Toedscool", "Klawf", "Capsakid", "Rellor", "Flittle", "Tinkatink", "Wiglett", "Bombirdier", "Finizen", "Varoom", "Cyclizar", "Orthworm", "Glimmet", "Greavard", "Flamigo", "Cetoddle", "Veluza", "Dondozo", "Tatsugiri"].forEach(n => FULL_PRIZE_POOL.push({ name: n, catKey: "comun", weight: 1000, isPokemon: true, isJackpot: false }));
+["Articuno", "Zapdos", "Moltres", "Mewtwo", "Raikou", "Entei", "Suicune", "Lugia", "Ho-Oh", "Regirock", "Regice", "Registeel", "Latias", "Latios", "Kyogre", "Groudon", "Rayquaza", "Uxie", "Mesprit", "Azelf", "Dialga", "Palkia", "Giratina", "Cobalion", "Terrakion", "Virizion", "Tornadus", "Thundurus", "Landorus", "Reshiram", "Zekrom", "Kyurem", "Xerneas", "Yveltal", "Zygarde", "Tapu Koko", "Tapu Lele", "Tapu Bulu", "Tapu Fini", "Solgaleo", "Lunala", "Necrozma", "Zacian", "Zamazenta", "Eternatus", "Calyrex", "Glastrier", "Spectrier", "Enamorus", "Ogerpon", "Koraidon", "Miraidon", "Cosmog", "Tipo Cero"].forEach(n => FULL_PRIZE_POOL.push({ name: n, catKey: "legendario", weight: 0.5, isPokemon: true, isJackpot: false }));
+["Kubfu", "Wo-Chien", "Chien-Pao", "Ting-Lu", "Chi-Yu", "Okidogi", "Munkidori", "Fezandipiti"].forEach(n => FULL_PRIZE_POOL.push({ name: n, catKey: "sublegendario", weight: 0.5, isPokemon: true, isJackpot: false }));
+["Mew", "Celebi", "Jirachi", "Deoxys", "Phione", "Manaphy", "Darkrai", "Shaymin", "Arceus", "Victini", "Keldeo", "Meloetta", "Genesect", "Diancie", "Hoopa", "Volcanion", "Magearna", "Marshadow", "Zeraora", "Meltan", "Zarude", "Pecharunt"].forEach(n => FULL_PRIZE_POOL.push({ name: n, catKey: "mitico", weight: 0.5, isPokemon: true, isJackpot: false }));
+["Nihilego", "Buzzwole", "Pheromosa", "Xurkitree", "Celesteela", "Kartana", "Guzzlord", "Poipole", "Stakataka", "Blacephalon"].forEach(n => FULL_PRIZE_POOL.push({ name: n, catKey: "ultraente", weight: 0.5, isPokemon: true, isJackpot: false }));
+["Gran Colmillo", "Ferrodada", "Colagrito", "Ferropolilla", "Furioseta", "Ferrocuello", "Melenaleteo", "Ferropaladín", "Colmilargo", "Ferropúas", "Pelarena", "Ferromano", "Melenatrueno", "Ferrocanto", "Electrofuria", "Ferroverdor", "Trepamuros", "Ferromole"].forEach(n => FULL_PRIZE_POOL.push({ name: n, catKey: "paradoja", weight: 0.5, isPokemon: true, isJackpot: false }));
+["Dratini", "Larvitar", "Bagon", "Beldum", "Gible", "Deino", "Goomy", "Jangmo-o", "Dreepy", "Frigibax"].forEach(n => FULL_PRIZE_POOL.push({ name: n, catKey: "pseudolegendario", weight: 15, isPokemon: true, isJackpot: false }));
+["Bulbasaur", "Ivysaur", "Venusaur", "Charmander", "Charmeleon", "Charizard", "Squirtle", "Wartortle", "Blastoise", "Chikorita", "Bayleef", "Meganium", "Cyndaquil", "Quilava", "Typhlosion", "Totodile", "Croconaw", "Feraligatr", "Treecko", "Grovyle", "Sceptile", "Torchic", "Combusken", "Blaziken", "Mudkip", "Marshtomp", "Swampert", "Turtwig", "Grotle", "Torterra", "Chimchar", "Monferno", "Infernape", "Piplup", "Prinplup", "Empoleon", "Snivy", "Servine", "Serperior", "Tepig", "Pignite", "Emboar", "Oshawott", "Dewott", "Samurott", "Chespin", "Quilladin", "Chesnaught", "Fennekin", "Braixen", "Delphox", "Froakie", "Frogadier", "Greninja", "Rowlet", "Dartrix", "Decidueye", "Litten", "Torracat", "Incineroar", "Popplio", "Brionne", "Primarina", "Grookey", "Thwackey", "Rillaboom", "Scorbunny", "Raboot", "Cinderace", "Sobble", "Drizzile", "Inteleon", "Sprigatito", "Floragato", "Meowscarada", "Fuecoco", "Crocalor", "Skeledirge", "Quaxly", "Quaxwell", "Quaquaval"].forEach(n => FULL_PRIZE_POOL.push({ name: n, catKey: "inicial", weight: 80, isPokemon: true, isJackpot: false }));
+
+// Recompensas especiales (no son Pokémon)
+FULL_PRIZE_POOL.push({ name: "x5 Caramelo Raro", catKey: null, catLabelOverride: "Poco común", catColorOverride: "#4C8DFF", weight: 150, isPokemon: false, isJackpot: false });
+FULL_PRIZE_POOL.push({ name: "x50 Créditos", catKey: null, catLabelOverride: "Muy común", catColorOverride: "#2ED573", weight: 1500, isPokemon: false, isJackpot: false });
+FULL_PRIZE_POOL.push({ name: "x100 Créditos", catKey: null, catLabelOverride: "Común", catColorOverride: "#8A93A6", weight: 1000, isPokemon: false, isJackpot: false });
+FULL_PRIZE_POOL.push({ name: "x10000 Créditos", catKey: null, catLabelOverride: "Extremadamente poco común", catColorOverride: "#F2B705", weight: 0.05, isPokemon: false, isJackpot: true });
+FULL_PRIZE_POOL.push({ name: "x1 Piedra Mega", catKey: null, catLabelOverride: "Muy poco común (elección libre)", catColorOverride: "#C9A6FF", weight: 3, isPokemon: false, isJackpot: false });
+let prizeTotalWeight = 0;
+FULL_PRIZE_POOL.forEach(p => { prizeTotalWeight += p.weight; });
+
+function pickFullPrize() {
+  let r = Math.random() * prizeTotalWeight;
+  for (let i = 0; i < FULL_PRIZE_POOL.length; i++) {
+    r -= FULL_PRIZE_POOL[i].weight;
+    if (r <= 0) return FULL_PRIZE_POOL[i];
+  }
+  return FULL_PRIZE_POOL[FULL_PRIZE_POOL.length - 1];
+}
+
+function fullPrizeCategory(prize) {
+  if (prize.catKey) return FULL_PRIZE_CATS[prize.catKey];
+  return { label: prize.catLabelOverride, color: prize.catColorOverride };
+}
+
+// ---------- nombre del entrenador (reutiliza la misma clave que la Casa de Apuestas) ----------
+
+const paidPrizes=FULL_PRIZE_POOL;
 function weightedPick(items){let r=Math.random()*items.reduce((s,x)=>s+x.weight,0);for(const x of items){r-=x.weight;if(r<=0)return x}return items[0]}
 function drawWheel(el,items){const colors=["#ef476f","#4d8dff","#33d17a","#ad7cff","#f5bd16","#ff8c42","#00a6a6"];const step=360/items.length;el.style.background=`conic-gradient(${items.map((x,i)=>`${colors[i%colors.length]} ${i*step}deg ${(i+1)*step}deg`).join(",")})`}
-drawWheel($("#dailyWheel"),dailyPrizes);drawWheel($("#paidWheel"),paidPrizes);
+drawWheel($("#dailyWheel"),dailyPrizes);
+drawWheel($("#paidWheel"),paidPrizes.slice(0,Math.min(24,paidPrizes.length)));
 async function spinVisual(el,items){const pick=weightedPick(items),idx=items.indexOf(pick),step=360/items.length;wheelRotation+=1440+(360-(idx*step+step/2));el.style.transform=`rotate(${wheelRotation}deg)`;await new Promise(r=>setTimeout(r,4300));return pick}
 async function updateDailyButton(){
   if(!state.account){$("#spinDailyButton").disabled=true;return}
@@ -388,12 +692,23 @@ $("#spinDailyButton").onclick=async()=>{
 $("#spinPaidButton").onclick=async()=>{
   if(!state.account||state.account.credits<100){alert("Necesitas 100 créditos.");return}
   await supabase.from("accounts").update({credits:state.account.credits-100}).eq("id",state.account.id);
-  pendingPaidReward=await spinVisual($("#paidWheel"),paidPrizes);$("#paidResult").textContent="Salió: "+pendingPaidReward.label;$("#acceptPaidReward").hidden=false;await loadAll();
+  const visualItems=paidPrizes.slice(0,Math.min(24,paidPrizes.length));
+  await spinVisual($("#paidWheel"),visualItems);
+  pendingPaidReward=pickFullPrize();
+  const category=fullPrizeCategory(pendingPaidReward);
+  $("#paidResult").innerHTML=`Salió: <strong style="color:${category.color}">${esc(pendingPaidReward.name)}</strong><div class="muted">${esc(category.label)}</div>`;
+  $("#acceptPaidReward").hidden=false;
+  await loadAll();
 };
 $("#acceptPaidReward").onclick=async()=>{
   if(!pendingPaidReward||!state.account)return;
-  if(pendingPaidReward.credits)await supabase.from("accounts").update({credits:state.account.credits+pendingPaidReward.credits}).eq("id",state.account.id);
-  else await supabase.from("rewards").insert({account_id:state.account.id,source:"Ruleta Pokémon",label:pendingPaidReward.label});
+  const rewardName=pendingPaidReward.name;
+  const creditMatch=rewardName.match(/x(\d+) Créditos/i);
+  if(creditMatch){
+    await supabase.from("accounts").update({credits:state.account.credits+Number(creditMatch[1])}).eq("id",state.account.id);
+  }else{
+    await supabase.from("rewards").insert({account_id:state.account.id,source:"Ruleta Pokémon",label:rewardName});
+  }
   pendingPaidReward=null;$("#acceptPaidReward").hidden=true;$("#paidResult").textContent="Recompensa añadida.";await loadAll();
 };
 function renderRewards(){

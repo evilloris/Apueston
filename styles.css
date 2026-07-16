@@ -378,8 +378,15 @@ tbody tr:hover{background:rgba(255,255,255,.015)}
   font-family:'JetBrains Mono',monospace;
   font-size:12px;
 }
+/* Elementos exclusivos del organizador */
 .admin-only{display:none}
-body.admin .admin-only{display:block}
+
+/* Botones, paneles internos y controles del organizador */
+body.admin .admin-only:not(.view){display:block}
+
+/* Las vistas siguen obedeciendo al sistema de pestañas */
+.view.admin-only{display:none}
+body.admin .view.admin-only.active{display:block}
 
 #activeEvents .card,#tournamentAdminList .card{min-height:100px}
 #dailyResult,#paidResult,#betOddsPreview{

@@ -30,10 +30,24 @@ function todayBolivia(){
   return new Intl.DateTimeFormat("en-CA",{timeZone:CONFIG.DAILY_WHEEL_TIMEZONE,year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 }
 function expected(a,b){ return 1/(1+10**((b-a)/400)); }
-function oddsFromElo(a,b){
-  const pa=Math.max(.08,Math.min(.92,expected(a,b)));
-  const margin=.90;
-  return {a:+(margin/pa).toFixed(2), b:+(margin/(1-pa)).toFixed(2)};
+function clampOdds(value){ return Math.max(1.001, +Number(value || 1.001).toFixed(3)); }
+function probabilityFromOdds(odds){ return Math.max(.01,Math.min(.99,1/Math.max(1.001,Number(odds)||2))); }
+function logit(p){ p=Math.max(.01,Math.min(.99,p)); return Math.log(p/(1-p)); }
+function logistic(x){ return 1/(1+Math.exp(-x)); }
+function oddsFromProbability(pa){
+  pa=Math.max(.015,Math.min(.985,pa));
+  const payoutFactor=.94;
+  return {a:clampOdds(payoutFactor/pa),b:clampOdds(payoutFactor/(1-pa))};
+}
+function oddsFromElo(a,b){ return oddsFromProbability(expected(a,b)); }
+function winnerBetPools(match){
+  let a=0,b=0;
+  for(const bet of state.bets){
+    if(bet.match_id!==match.id || bet.bet_type!=="winner" || bet.status!=="pending")continue;
+    if(bet.selection?.participant_id===match.side_a)a+=Number(bet.stake)||0;
+    if(bet.selection?.participant_id===match.side_b)b+=Number(bet.stake)||0;
+  }
+  return {a,b,total:a+b};
 }
 function scoreOdds(eloA,eloB,a,b){
   const expectedDiff=(eloA-eloB)/180;
@@ -82,6 +96,7 @@ function renderAll(){
   renderLeaderboard(); renderActiveEvents(); renderTournamentSelects(); renderBetMatches(); renderBetTournamentStandings(); renderBetStandings();
   renderMyBets(); renderGeneralStats(); renderResults(); renderAccountsAdmin();
   renderCreditsAdmin(); renderTournamentsAdmin(); renderRewards(); updateDailyButton();
+  if($("#betModal")?.classList.contains("open")) updateBetPreview();
 }
 function switchView(view){
   const target=$(`#view-${view}`);
@@ -149,7 +164,32 @@ $("#adminTournamentSelect").onchange=()=>{renderParticipantList();renderMatchAdm
 function dynamicOdds(match){
   const a=state.participants.find(p=>p.id===match.side_a),b=state.participants.find(p=>p.id===match.side_b);
   const ra=rankingFor(a?.display_name).elo, rb=rankingFor(b?.display_name).elo;
-  return oddsFromElo(ra,rb);
+
+  // Base por ELO o por las cuotas manuales elegidas por el organizador.
+  let pA=expected(ra,rb);
+  const manualA=Number(match.base_odds?.manual_a),manualB=Number(match.base_odds?.manual_b);
+  if(manualA>=1.001 && manualB>=1.001){
+    const ia=probabilityFromOdds(manualA),ib=probabilityFromOdds(manualB);
+    pA=ia/(ia+ib);
+  }
+
+  // El dinero apostado mueve la cuota: más apuestas a un lado = menor cuota para ese lado.
+  const pool=winnerBetPools(match);
+  if(pool.total>0){
+    const virtualLiquidity=500;
+    const crowdA=(pool.a+(virtualLiquidity*pA))/(pool.total+virtualLiquidity);
+    const crowdWeight=Math.min(.55,pool.total/(pool.total+700));
+    pA=(pA*(1-crowdWeight))+(crowdA*crowdWeight);
+  }
+
+  // Durante la pelea, el marcador pesa cada vez más según la diferencia.
+  if(match.status==="live"){
+    const diff=(Number(match.score_a)||0)-(Number(match.score_b)||0);
+    const abs=Math.abs(diff);
+    const strength=abs<=2?.20:abs<=4?.38:.72;
+    pA=logistic(logit(pA)+(diff*strength));
+  }
+  return oddsFromProbability(pA);
 }
 
 function renderBetStandings(){
@@ -186,15 +226,22 @@ function renderBetMatches(){
   const tid=$("#betTournamentSelect").value;
   const list=state.matches.filter(m=>m.tournament_id===tid&&["scheduled","live"].includes(m.status)&&m.side_a&&m.side_b);
   $("#betMatches").innerHTML=list.map(m=>{
-    const o=dynamicOdds(m);
-    return `<div class="card match clickable" data-bet-match="${m.id}">
-      <div class="muted">${esc(m.phase)} · ronda ${m.round_no}</div>
-      <div class="teams"><span>${esc(participantName(m.side_a))}</span><span>vs</span><span>${esc(participantName(m.side_b))}</span></div>
-      <div class="odds"><span>x${o.a}</span><span>x${o.b}</span></div>
-      <div class="muted">${m.scheduled_at?new Date(m.scheduled_at).toLocaleString("es-BO"):"Sin horario"}</div>
+    const o=dynamicOdds(m),live=m.status==="live";
+    return `<div class="card match clickable ${live?"live-match":""}" data-bet-match="${m.id}">
+      <div class="match-topline">
+        <div class="muted">${esc(m.phase)} · ronda ${m.round_no}</div>
+        ${live?'<span class="live-badge"><i></i> EN VIVO</span>':''}
+      </div>
+      <div class="live-score-grid">
+        <div class="live-team"><strong>${esc(participantName(m.side_a))}</strong><span class="live-score">${m.score_a??0}</span></div>
+        <span class="vs">VS</span>
+        <div class="live-team"><strong>${esc(participantName(m.side_b))}</strong><span class="live-score">${m.score_b??0}</span></div>
+      </div>
+      <div class="odds"><span>x${o.a.toFixed(3)}</span><span>x${o.b.toFixed(3)}</span></div>
+      <div class="muted">${m.scheduled_at?new Date(m.scheduled_at).toLocaleString("es-BO"):"Sin horario asignado"}</div>
     </div>`;
   }).join("")||'<div class="muted">No hay enfrentamientos abiertos.</div>';
-  $$("[data-bet-match]").forEach(c=>c.onclick=()=>openBet(c.dataset.betMatch));
+  $$('[data-bet-match]').forEach(c=>c.onclick=()=>openBet(c.dataset.betMatch));
 }
 function openBet(id){
   if(!state.account){alert("Primero inicia sesión.");return}
@@ -225,7 +272,7 @@ function currentBetOdds(){
 }
 function updateBetPreview(){
   const odds=currentBetOdds(),stake=+$("#betStake").value||0;
-  $("#betOddsPreview").textContent=`Cuota x${odds} · pago potencial ${money(Math.floor(stake*odds))}`;
+  $("#betOddsPreview").textContent=`Cuota x${Number(odds).toFixed(3)} · pago potencial ${money(Math.floor(stake*odds))}`;
 }
 $("#betStake").oninput=updateBetPreview;
 $("#confirmBet").onclick=async()=>{
@@ -258,11 +305,14 @@ function renderGeneralStats(){
   $("#generalStats").innerHTML=`<table><thead><tr><th>#</th><th>Jugador</th><th>ELO</th><th>PG</th><th>PP</th><th>KO+</th><th>KO-</th></tr></thead><tbody>${rows||'<tr><td colspan="7">Sin estadísticas.</td></tr>'}</tbody></table>`;
 }
 function standingsFor(tid){
-  const ps=state.participants.filter(p=>p.tournament_id===tid), ms=state.matches.filter(m=>m.tournament_id===tid&&m.phase==="group"&&["finished","walkover"].includes(m.status));
+  const ps=state.participants.filter(p=>p.tournament_id===tid);
+  const ms=state.matches.filter(m=>m.tournament_id===tid&&m.phase==="group"&&["live","finished","walkover"].includes(m.status));
   const map=new Map(ps.map(p=>[p.id,{...p,pj:0,pg:0,pts:0,kf:0,kc:0}]));
   for(const m of ms){
     const a=map.get(m.side_a),b=map.get(m.side_b);if(!a||!b)continue;
-    a.pj++;b.pj++;a.kf+=m.score_a||0;a.kc+=m.score_b||0;b.kf+=m.score_b||0;b.kc+=m.score_a||0;
+    a.kf+=m.score_a||0;a.kc+=m.score_b||0;b.kf+=m.score_b||0;b.kc+=m.score_a||0;
+    if(m.status==="live")continue;
+    a.pj++;b.pj++;
     if(m.winner_id===a.id){a.pg++;a.pts+=3}else if(m.winner_id===b.id){b.pg++;b.pts+=3}else{a.pts++;b.pts++}
   }
   return [...map.values()].sort((a,b)=>a.group_no-b.group_no||b.pts-a.pts||((b.kf-b.kc)-(a.kf-a.kc)));
@@ -550,12 +600,18 @@ function matchCardAdmin(m){
     <div class="fight-vs">
       <span>${esc(participantName(m.side_a))}</span><span class="vs">VS</span><span>${esc(participantName(m.side_b))}</span>
     </div>
+    <div class="manual-odds-box">
+      <div><label>Cuota manual ${esc(participantName(m.side_a))}</label><input type="number" min="1.001" step="0.001" value="${m.base_odds?.manual_a??''}" data-manual-odds-a="${m.id}" placeholder="Automática"></div>
+      <div><label>Cuota manual ${esc(participantName(m.side_b))}</label><input type="number" min="1.001" step="0.001" value="${m.base_odds?.manual_b??''}" data-manual-odds-b="${m.id}" placeholder="Automática"></div>
+      <button class="secondary" data-save-odds="${m.id}">Guardar cuotas</button>
+      <button class="danger" data-clear-odds="${m.id}">Usar ELO</button>
+    </div>
     <div class="fight-controls">
       ${done?`<div class="card"><strong>Resultado: ${m.score_a??0} - ${m.score_b??0}</strong> · ${m.status==="walkover"?"Walkover":"Finalizada"}</div>`:
       started?`<div class="score-box">
-        <input type="number" min="0" value="${m.score_a??0}" data-score-a="${m.id}">
+        <input type="number" min="0" value="${m.score_a??0}" data-score-a="${m.id}" data-live-score="${m.id}">
         <span>—</span>
-        <input type="number" min="0" value="${m.score_b??0}" data-score-b="${m.id}">
+        <input type="number" min="0" value="${m.score_b??0}" data-score-b="${m.id}" data-live-score="${m.id}">
         <button data-finish-match="${m.id}">Finalizar pelea</button>
       </div>
       <div class="row" style="margin-top:8px">
@@ -565,6 +621,30 @@ function matchCardAdmin(m){
       `<button data-start-match="${m.id}" style="width:100%">Iniciar pelea</button>`}
     </div>
   </div>`;
+}
+const liveScoreTimers=new Map();
+function queueLiveScoreSave(id){
+  const m=state.matches.find(x=>x.id===id);if(!m)return;
+  const a=Math.max(0,+document.querySelector(`[data-score-a="${id}"]`)?.value||0);
+  const b=Math.max(0,+document.querySelector(`[data-score-b="${id}"]`)?.value||0);
+  m.score_a=a;m.score_b=b;
+  renderBetMatches();renderBetStandings();renderBetTournamentStandings();
+  clearTimeout(liveScoreTimers.get(id));
+  liveScoreTimers.set(id,setTimeout(async()=>{
+    const {error}=await supabase.from("matches").update({score_a:a,score_b:b,status:"live"}).eq("id",id);
+    if(error)console.error(error);
+  },350));
+}
+async function saveManualOdds(id){
+  const a=Number(document.querySelector(`[data-manual-odds-a="${id}"]`)?.value);
+  const b=Number(document.querySelector(`[data-manual-odds-b="${id}"]`)?.value);
+  if(a<1.001||b<1.001){alert("Ambas cuotas deben ser de al menos 1.001.");return}
+  const {error}=await supabase.from("matches").update({base_odds:{manual_a:a,manual_b:b}}).eq("id",id);
+  if(error)alert(error.message);else await loadAll();
+}
+async function clearManualOdds(id){
+  const {error}=await supabase.from("matches").update({base_odds:{}}).eq("id",id);
+  if(error)alert(error.message);else await loadAll();
 }
 async function saveSchedule(id){
   const value=document.querySelector(`[data-match-date="${id}"]`).value;
@@ -581,6 +661,7 @@ async function finishMatch(id,walkover=false,side=null){
   if(walkover){
     status="walkover";winner=side==="a"?m.side_a:m.side_b;a=side==="a"?1:0;b=side==="b"?1:0;
   }else{
+    clearTimeout(liveScoreTimers.get(id));
     a=+document.querySelector(`[data-score-a="${id}"]`).value;
     b=+document.querySelector(`[data-score-b="${id}"]`).value;
     if(a===b){alert("El marcador no puede terminar empatado.");return}
@@ -759,8 +840,13 @@ function renderRewards(){
 $("#rewardDrawerButton").onclick=()=>$("#rewardDrawer").classList.toggle("open");
 $("#deliveryDrawerButton").onclick=()=>$("#deliveryDrawer").classList.toggle("open");
 
+let realtimeReloadTimer=null;
+function queueRealtimeReload(){
+  clearTimeout(realtimeReloadTimer);
+  realtimeReloadTimer=setTimeout(()=>loadAll(),180);
+}
 for(const table of ["accounts","tournaments","tournament_participants","matches","bets","rewards","daily_spins","rankings"]){
-  supabase.channel("rt-"+table).on("postgres_changes",{event:"*",schema:"public",table},()=>loadAll()).subscribe();
+  supabase.channel("rt-"+table).on("postgres_changes",{event:"*",schema:"public",table},queueRealtimeReload).subscribe();
 }
 const saved=localStorage.getItem("liga_account");
 if(saved){const {data}=await supabase.from("accounts").select("*").eq("id",saved).maybeSingle();state.account=data||null}

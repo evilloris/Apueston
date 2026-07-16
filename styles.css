@@ -112,3 +112,16 @@ table{min-width:620px}
 .standings-group{margin-bottom:18px}
 .qualifier-row{background:rgba(56,215,122,.045)}
 .knockout-card{border-top:3px solid var(--purple)}
+
+/* Peleas en vivo */
+.match-topline{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.live-match{border:1px solid rgba(255,55,75,.95)!important;box-shadow:0 0 0 1px rgba(255,55,75,.22),0 0 18px rgba(255,32,58,.16);animation:liveCardPulse 2.1s ease-in-out infinite}
+.live-badge{display:inline-flex;align-items:center;gap:6px;color:#ff5268;font-size:11px;font-weight:900;letter-spacing:.8px}
+.live-badge i{width:8px;height:8px;border-radius:50%;background:#ff304f;box-shadow:0 0 9px #ff304f;animation:liveDotPulse 1.25s ease-in-out infinite}
+.live-score-grid{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center;text-align:center;margin:6px 0}
+.live-team{display:grid;gap:3px}.live-score{font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:900;color:var(--gold)}
+.live-score-grid .vs{color:var(--muted);font-size:12px;font-weight:900}
+.manual-odds-box{display:grid;grid-template-columns:minmax(150px,1fr) minmax(150px,1fr) auto auto;gap:8px;align-items:end;margin:12px 0;padding:10px;background:rgba(255,255,255,.02);border:1px dashed var(--line);border-radius:9px}
+@keyframes liveCardPulse{0%,100%{border-color:rgba(255,55,75,.65);box-shadow:0 0 0 1px rgba(255,55,75,.12),0 0 8px rgba(255,32,58,.08)}50%{border-color:#ff304f;box-shadow:0 0 0 1px rgba(255,55,75,.35),0 0 24px rgba(255,32,58,.28)}}
+@keyframes liveDotPulse{0%,100%{opacity:.35;transform:scale(.8)}50%{opacity:1;transform:scale(1.18)}}
+@media(max-width:760px){.manual-odds-box{grid-template-columns:1fr 1fr}.manual-odds-box button{width:100%}}

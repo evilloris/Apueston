@@ -64,6 +64,15 @@ async function loadAll(){
 }
 function renderAll(){
   document.body.classList.toggle("admin",state.admin);
+
+  // Mantiene las secciones de administrador completamente separadas de las demás pestañas.
+  $$(".admin-only").forEach(el=>{
+    if(el.classList.contains("view")) el.hidden=!state.admin;
+    else el.hidden=!state.admin;
+  });
+  const activeView=$(".view.active");
+  if(!state.admin && activeView?.classList.contains("admin-only")) switchView("home");
+
   $("#sessionLabel").textContent=state.account?state.account.username:"Sin sesión";
   $("#walletLabel").textContent=state.account?`💰 ${money(state.account.credits)}`:"💰 —";
   $("#loginButton").hidden=!!state.account; $("#logoutButton").hidden=!state.account;
@@ -72,8 +81,20 @@ function renderAll(){
   renderCreditsAdmin(); renderTournamentsAdmin(); renderRewards(); updateDailyButton();
 }
 function switchView(view){
-  $$(".view").forEach(x=>x.classList.toggle("active",x.id===`view-${view}`));
-  $$("#nav button").forEach(x=>x.classList.toggle("active",x.dataset.view===view));
+  const target=$(`#view-${view}`);
+  if(!target || (target.classList.contains("admin-only") && !state.admin)) view="home";
+
+  $$(".view").forEach(section=>{
+    const isActive=section.id===`view-${view}`;
+    section.classList.toggle("active",isActive);
+    section.setAttribute("aria-hidden",String(!isActive));
+  });
+  $$("#nav button").forEach(button=>{
+    const isActive=button.dataset.view===view;
+    button.classList.toggle("active",isActive);
+    button.setAttribute("aria-current",isActive?"page":"false");
+  });
+  window.scrollTo({top:0,behavior:"smooth"});
 }
 $("#nav").addEventListener("click",e=>{const b=e.target.closest("[data-view]");if(b)switchView(b.dataset.view)});
 

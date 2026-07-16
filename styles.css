@@ -133,3 +133,7 @@ table{min-width:620px}
 .subnav button.active{border-color:var(--yellow);color:var(--yellow)}
 .event-tab{display:none}.event-tab.active{display:block}
 .pvp-side{min-width:0}.pvp-members{display:grid;gap:8px}
+
+.pokemon-result{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;min-height:74px}
+.pokemon-result strong{font-size:1.25rem;color:#fff}
+.pokemon-result span{font-size:.82rem;color:#f5bd16;font-weight:800;text-transform:uppercase;letter-spacing:.06em}

@@ -909,11 +909,25 @@ function renderPvpEvents(){
 }
 renderPvpSides();
 
+const pokemonPools=[
+  {category:"Legendario",rarity:"Casi imposible",weight:0.34,names:`Articuno, Zapdos, Moltres, Mewtwo, Raikou, Entei, Suicune, Lugia, Ho-Oh, Regirock, Regice, Registeel, Latias, Latios, Kyogre, Groudon, Rayquaza, Uxie, Mesprit, Azelf, Dialga, Palkia, Giratina, Cobalion, Terrakion, Virizion, Tornadus, Thundurus, Landorus, Reshiram, Zekrom, Kyurem, Xerneas, Yveltal, Zygarde, Tapu Koko, Tapu Lele, Tapu Bulu, Tapu Fini, Solgaleo, Lunala, Necrozma, Zacian, Zamazenta, Eternatus, Calyrex, Glastrier, Spectrier, Enamorus, Ogerpon, Koraidon, Miraidon`},
+  {category:"Mítico",rarity:"Casi imposible",weight:0.16,names:`Mew, Celebi, Jirachi, Deoxys, Phione, Manaphy, Darkrai, Shaymin, Arceus, Victini, Keldeo, Meloetta, Genesect, Diancie, Hoopa, Volcanion, Magearna, Marshadow, Zeraora, Meltan, Zarude, Pecharunt`},
+  {category:"Sublegendario",rarity:"Casi imposible",weight:0.08,names:`Kubfu, Wo-Chien, Chien-Pao, Ting-Lu, Chi-Yu, Okidogi, Munkidori, Fezandipiti`},
+  {category:"Ultraente",rarity:"Casi imposible",weight:0.08,names:`Nihilego, Buzzwole, Pheromosa, Xurkitree, Celesteela, Kartana, Guzzlord, Poipole, Stakataka, Blacephalon`},
+  {category:"Paradoja",rarity:"Casi imposible",weight:0.22,names:`Gran Colmillo, Ferrodada, Colagrito, Ferropolilla, Furioseta, Ferrocuello, Melenaleteo, Ferropaladín, Colmilargo, Ferropúas, Pelarena, Ferromano, Melenatrueno, Ferrocanto, Electrofuria, Ferroverdor, Trepamuros, Ferromole`},
+  {category:"Fase inicial específica",rarity:"Casi imposible",weight:0.12,names:`Cosmog, Tipo Cero`},
+  {category:"Pseudolegendario inicial",rarity:"Muy difícil",weight:4,names:`Dratini, Larvitar, Bagon, Beldum, Gible, Deino, Goomy, Jangmo-o, Dreepy, Frigibax`},
+  {category:"Inicial",rarity:"Difícil",weight:13,names:`Bulbasaur, Ivysaur, Venusaur, Charmander, Charmeleon, Charizard, Squirtle, Wartortle, Blastoise, Chikorita, Bayleef, Meganium, Cyndaquil, Quilava, Typhlosion, Totodile, Croconaw, Feraligatr, Treecko, Grovyle, Sceptile, Torchic, Combusken, Blaziken, Mudkip, Marshtomp, Swampert, Turtwig, Grotle, Torterra, Chimchar, Monferno, Infernape, Piplup, Prinplup, Empoleon, Snivy, Servine, Serperior, Tepig, Pignite, Emboar, Oshawott, Dewott, Samurott, Chespin, Quilladin, Chesnaught, Fennekin, Braixen, Delphox, Froakie, Frogadier, Greninja, Rowlet, Dartrix, Decidueye, Litten, Torracat, Incineroar, Popplio, Brionne, Primarina, Grookey, Thwackey, Rillaboom, Scorbunny, Raboot, Cinderace, Sobble, Drizzile, Inteleon, Sprigatito, Floragato, Meowscarada, Fuecoco, Crocalor, Skeledirge, Quaxly, Quaxwell, Quaquaval`},
+  {category:"Común",rarity:"Común",weight:82,names:`Pidgey, Rattata, Spearow, Ekans, Sandshrew, Nidoran♀, Nidoran♂, Vulpix, Zubat, Oddish, Paras, Venonat, Diglett, Meowth, Psyduck, Mankey, Growlithe, Poliwag, Abra, Machop, Bellsprout, Tentacool, Geodude, Ponyta, Slowpoke, Magnemite, Farfetch'd, Doduo, Seel, Grimer, Shellder, Gastly, Onix, Drowzee, Krabby, Voltorb, Exeggcute, Cubone, Lickitung, Koffing, Rhyhorn, Tangela, Horsea, Goldeen, Staryu, Scyther, Jynx, Electabuzz, Magmar, Pinsir, Tauros, Magikarp, Lapras, Eevee, Porygon, Omanyte, Kabuto, Sentret, Ledyba, Spinarak, Chinchou, Pichu, Cleffa, Igglybuff, Togepi, Natu, Mareep, Sudowoodo, Hoppip, Aipom, Sunkern, Yanma, Wooper, Murkrow, Misdreavus, Wobbuffet, Girafarig, Pineco, Dunsparce, Gligar, Snubbull, Qwilfish, Shuckle, Heracross, Teddiursa, Slugma, Swinub, Corsola, Remoraid, Delibird, Skarmory, Houndour, Phanpy, Stantler, Smeargle, Smoochum, Elekid, Magby, Miltank, Poochyena, Zigzagoon, Wurmple, Lotad, Seedot, Taillow, Wingull, Ralts, Surskit, Shroomish, Slakoth, Nincada, Whismur, Makuhita, Nosepass, Skitty, Sableye, Mawile, Aron, Meditite, Electrike, Plusle, Minun, Volbeat, Illumise, Roselia, Gulpin, Carvanha, Wailmer, Numel, Spoink, Cacnea, Swablu, Corphish, Baltoy, Lileep, Anorith, Feebas, Castform, Kecleon, Shuppet, Duskull, Tropius, Chimecho, Absol, Wynaut, Snorunt, Spheal, Clamperl, Relicanth, Luvdisc, Bidoof, Kricketot, Shinx, Cranidos, Shieldon, Burmy, Combee, Pachirisu, Buizel, Cherubi, Shellos, Drifloon, Buneary, Glameow, Stunky, Bronzor, Chatot, Spiritomb, Riolu, Hippopotas, Skorupi, Croagunk, Carnivine, Finneon, Mantyke, Snover, Rotom, Patrat, Lillipup, Purrloin, Pansage, Pansear, Panpour, Munna, Pidove, Blitzle, Roggenrola, Woobat, Drilbur, Audino, Timburr, Tympole, Throh, Sawk, Sewaddle, Venipede, Cottonee, Petilil, Basculin, Sandile, Darumaka, Maractus, Dwebble, Scraggy, Sigilyph, Yamask, Tirtouga, Archen, Trubbish, Minccino, Gothita, Solosis, Ducklett, Vanillite, Deerling, Emolga, Karrablast, Foongus, Frillish, Alomomola, Joltik, Ferroseed, Klink, Tynamo, Elgyem, Litwick, Axew, Cubchoo, Cryogonal, Shelmet, Stunfisk, Mienfoo, Druddigon, Golett, Pawniard, Bouffalant, Rufflet, Vullaby, Heatmor, Durant, Bunnelby, Fletchling, Scatterbug, Litleo, Flabébé, Skiddo, Pancham, Furfrou, Espurr, Honedge, Spritzee, Swirlix, Inkay, Binacle, Skrelp, Clauncher, Helioptile, Amaura, Hawlucha, Carbink, Phantump, Pumpkaboo, Bergmite, Noibat, Grubbin, Crabrawler, Oricorio, Cutiefly, Rockruff, Wishiwashi, Mareanie, Mudbray, Dewpider, Fomantis, Morelull, Salandit, Stufful, Bounsweet, Comfey, Oranguru, Passimian, Wimpod, Sandygast, Pyukumuku, Togedemaru, Bruxish, Drampa, Dhelmise, Skwovet, Rookidee, Blipbug, Nickit, Gossifleur, Wooloo, Chewtle, Yamper, Rolycoly, Applin, Silicobra, Cramorant, Arrokuda, Toxel, Sizzlipede, Clobbopus, Sinistea, Hatenna, Impidimp, Milcery, Falinks, Pincurchin, Snom, Stonjourner, Eiscue, Indeedee, Morpeko, Cufant, Dracozolt, Arctozolt, Dracovish, Arctovish, Lechonk, Tarountula, Nymble, Pawmi, Tandemaus, Fidough, Smoliv, Squawkabilly, Nacli, Charcadet, Tadbulb, Wattrel, Maschiff, Shroodle, Bramblin, Toedscool, Klawf, Capsakid, Rellor, Flittle, Tinkatink, Wiglett, Bombirdier, Finizen, Varoom, Cyclizar, Orthworm, Glimmet, Greavard, Flamigo, Cetoddle, Veluza, Dondozo, Tatsugiri`}
+].map(pool=>({...pool,names:pool.names.split(",").map(x=>x.trim()).filter(Boolean)}));
 const dailyPrizes=[
-  {label:"500 créditos",weight:32,credits:500},{label:"1000 créditos",weight:8,credits:1000},
-  {label:"10 Caramelos Raros",weight:18},{label:"Pokémon shiny aleatorio",weight:2},
-  {label:"Pokémon común aleatorio",weight:38},{label:"Legendario / mítico del día",weight:.2},{label:"Pseudolegendario del día",weight:.8}
+  {label:"Común",weight:82},{label:"Difícil",weight:13},{label:"Muy difícil",weight:4},{label:"Casi imposible",weight:1}
 ];
+function pickPokemon(){
+  const pool=weightedPick(pokemonPools);
+  const name=pool.names[Math.floor(Math.random()*pool.names.length)];
+  return {name,category:pool.category,rarity:pool.rarity,label:`${name} · ${pool.category}`};
+}
 const paidPrizes=[
   {label:"Pokémon común aleatorio",weight:46},{label:"Pokémon raro aleatorio",weight:24},
   {label:"5 Caramelos Raros",weight:15},{label:"500 créditos",weight:10,credits:500},
@@ -926,16 +940,17 @@ async function spinVisual(el,items){const pick=weightedPick(items),idx=items.ind
 async function updateDailyButton(){
   if(!state.account){$("#spinDailyButton").disabled=true;return}
   const {data}=await supabase.from("daily_spins").select("account_id").eq("account_id",state.account.id).eq("spin_date",todayBolivia()).maybeSingle();
-  $("#spinDailyButton").disabled=!!data;$("#spinDailyButton").textContent=data?"Giro diario usado":"Girar una vez al día";
+  $("#spinDailyButton").disabled=!!data;$("#spinDailyButton").textContent=data?"Giro diario usado":"Girar ruleta Pokémon";
 }
 $("#spinDailyButton").onclick=async()=>{
   if(!state.account)return;
-  const pick=await spinVisual($("#dailyWheel"),dailyPrizes);
+  await spinVisual($("#dailyWheel"),dailyPrizes);
+  const pick=pickPokemon();
   const {error}=await supabase.from("daily_spins").insert({account_id:state.account.id,spin_date:todayBolivia(),reward_label:pick.label});
   if(error){alert("Ya giraste hoy.");return}
-  if(pick.credits)await supabase.from("accounts").update({credits:state.account.credits+pick.credits}).eq("id",state.account.id);
-  else await supabase.from("rewards").insert({account_id:state.account.id,source:"Ruleta diaria",label:pick.label});
-  $("#dailyResult").textContent="Premio: "+pick.label;await loadAll();
+  await supabase.from("rewards").insert({account_id:state.account.id,source:"Ruleta Pokémon diaria",label:pick.label});
+  $("#dailyResult").innerHTML=`<strong>${esc(pick.name)}</strong><span>${esc(pick.category)} · ${esc(pick.rarity)}</span>`;
+  await loadAll();
 };
 $("#spinPaidButton").onclick=async()=>{
   if(!state.account||state.account.credits<100){alert("Necesitas 100 créditos.");return}

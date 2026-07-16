@@ -95,7 +95,7 @@ function renderAll(){
   $("#loginButton").hidden=!!state.account; $("#logoutButton").hidden=!state.account;
   renderLeaderboard(); renderActiveEvents(); renderTournamentSelects(); renderBetMatches(); renderBetTournamentStandings(); renderBetStandings();
   renderMyBets(); renderGeneralStats(); renderResults(); renderAccountsAdmin();
-  renderCreditsAdmin(); renderTournamentsAdmin(); renderRewards(); updateDailyButton();
+  renderCreditsAdmin(); renderTournamentsAdmin(); renderPvpEvents(); renderRewards(); updateDailyButton();
   if($("#betModal")?.classList.contains("open")) updateBetPreview();
 }
 function switchView(view){
@@ -115,6 +115,13 @@ function switchView(view){
   window.scrollTo({top:0,behavior:"smooth"});
 }
 $("#nav").addEventListener("click",e=>{const b=e.target.closest("[data-view]");if(b)switchView(b.dataset.view)});
+
+$("#eventSubnav")?.addEventListener("click",e=>{
+  const b=e.target.closest("[data-event-tab]");if(!b)return;
+  $$("[data-event-tab]",$("#eventSubnav")).forEach(x=>x.classList.toggle("active",x===b));
+  $$(".event-tab",$("#view-events")).forEach(x=>x.classList.toggle("active",x.id===`event-tab-${b.dataset.eventTab}`));
+  if(b.dataset.eventTab==="pvp")renderPvpSides();
+});
 
 function modal(id,open=true){ $(id).classList.toggle("open",open); }
 $$("[data-close-modal]").forEach(b=>b.onclick=()=>b.closest(".modal").classList.remove("open"));
@@ -300,10 +307,28 @@ function renderMyBets(){
 }
 
 function renderGeneralStats(){
+  const panel=$("#generalStats")?.closest(".panel");
+  if(panel) panel.hidden=!state.admin;
+  if(!state.admin){$("#generalStats").innerHTML="";return;}
   const accountNames=new Set(state.accounts.map(a=>a.username.toLowerCase()));
-  const rows=state.rankings.filter(r=>accountNames.has(r.name.toLowerCase())).map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.name)}</td><td>${r.elo}</td><td>${r.wins}</td><td>${r.losses}</td><td>${r.kos_for}</td><td>${r.kos_against}</td></tr>`).join("");
-  $("#generalStats").innerHTML=`<table><thead><tr><th>#</th><th>Jugador</th><th>ELO</th><th>PG</th><th>PP</th><th>KO+</th><th>KO-</th></tr></thead><tbody>${rows||'<tr><td colspan="7">Sin estadísticas.</td></tr>'}</tbody></table>`;
+  const rows=state.rankings.filter(r=>accountNames.has(r.name.toLowerCase())).map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.name)}</td><td>${r.elo}</td><td>${r.wins}</td><td>${r.losses}</td><td>${r.kos_for}</td><td>${r.kos_against}</td><td><button class="danger" data-reset-ranking="${esc(r.name)}">Reiniciar</button></td></tr>`).join("");
+  $("#generalStats").innerHTML=`<table><thead><tr><th>#</th><th>Jugador</th><th>ELO</th><th>PG</th><th>PP</th><th>KO+</th><th>KO-</th><th>Acción</th></tr></thead><tbody>${rows||'<tr><td colspan="8">Sin estadísticas.</td></tr>'}</tbody></table>`;
+  $$('[data-reset-ranking]').forEach(b=>b.onclick=()=>resetRanking(b.dataset.resetRanking));
 }
+async function resetRanking(name){
+  if(!state.admin||!confirm(`¿Reiniciar ELO y estadísticas de ${name}?`))return;
+  const row={name,elo:1000,wins:0,losses:0,kos_for:0,kos_against:0};
+  const {error}=await supabase.from("rankings").upsert(row,{onConflict:"name"});
+  if(error){alert(error.message);return}await loadAll();
+}
+$("#resetAllRankings").onclick=async()=>{
+  if(!state.admin||!confirm("¿Reiniciar el ELO, victorias, derrotas y KO de todos los usuarios?"))return;
+  const rows=state.accounts.map(a=>({name:a.username,elo:1000,wins:0,losses:0,kos_for:0,kos_against:0}));
+  if(!rows.length)return;
+  const {error}=await supabase.from("rankings").upsert(rows,{onConflict:"name"});
+  if(error){alert(error.message);return}await loadAll();
+};
+
 function standingsFor(tid){
   const ps=state.participants.filter(p=>p.tournament_id===tid);
   const ms=state.matches.filter(m=>m.tournament_id===tid&&m.phase==="group"&&["live","finished","walkover"].includes(m.status));
@@ -405,7 +430,7 @@ $("#createTournament").onclick=async()=>{
 };
 
 function renderTournamentsAdmin(){
-  $("#tournamentAdminList").innerHTML=state.tournaments.map(t=>{
+  $("#tournamentAdminList").innerHTML=state.tournaments.filter(t=>t.config?.event_kind!=="pvp").map(t=>{
     const count=t.config?.participant_count||0;
     return `<div class="card">
       <strong>${esc(t.name)}</strong>
@@ -586,6 +611,9 @@ function renderMatchAdmin(){
   $$("[data-walkover-a]").forEach(b=>b.onclick=()=>finishMatch(b.dataset.walkoverA,true,"a"));
   $$("[data-walkover-b]").forEach(b=>b.onclick=()=>finishMatch(b.dataset.walkoverB,true,"b"));
   $$("[data-save-schedule]").forEach(b=>b.onclick=()=>saveSchedule(b.dataset.saveSchedule));
+  $$("[data-save-odds]").forEach(b=>b.onclick=()=>saveManualOdds(b.dataset.saveOdds));
+  $$("[data-clear-odds]").forEach(b=>b.onclick=()=>clearManualOdds(b.dataset.clearOdds));
+  $$("[data-live-score]").forEach(input=>input.oninput=()=>queueLiveScoreSave(input.dataset.liveScore));
 }
 function matchCardAdmin(m){
   const started=m.status==="live",done=["finished","walkover"].includes(m.status);
@@ -655,8 +683,74 @@ async function startMatch(id){
   await supabase.from("matches").update({status:"live"}).eq("id",id);
   await loadAll();renderMatchAdmin();
 }
+function participantMemberNames(participant){
+  const names=(participant?.members||[]).map(botOrAccountName).filter(Boolean);
+  return names.length?names:[participant?.display_name].filter(Boolean);
+}
+function performanceEloDelta(playerElo,opponentAverage,didWin,kBase,kosFor,kosAgainst){
+  const exp=expected(playerElo,opponentAverage);
+  const result=didWin?1:0;
+  const scoreDiff=Number(kosFor||0)-Number(kosAgainst||0);
+  // Los KO modifican el resultado, pero no pueden dominar por completo la victoria/derrota.
+  const koAdjustment=Math.max(-0.35,Math.min(0.35,scoreDiff*0.055));
+  const raw=kBase*((result-exp)+koAdjustment);
+  return Math.round(raw)|| (didWin?1:-1);
+}
+async function updateRankingAfterMatch(match,scoreA,scoreB,winnerId){
+  const pa=state.participants.find(p=>p.id===match.side_a);
+  const pb=state.participants.find(p=>p.id===match.side_b);
+  if(!pa||!pb)return;
+  const namesA=participantMemberNames(pa),namesB=participantMemberNames(pb);
+  const avgA=namesA.reduce((sum,n)=>sum+rankingFor(n).elo,0)/Math.max(1,namesA.length);
+  const avgB=namesB.reduce((sum,n)=>sum+rankingFor(n).elo,0)/Math.max(1,namesB.length);
+  const isDouble=(tournamentById(match.tournament_id)?.format==="2v2")||namesA.length>1||namesB.length>1;
+  // Las dobles dan menos puntos. Todo resultado de torneo vale x2 frente a un PVP normal.
+  const tournamentMultiplier=2;
+  const kBase=(isDouble?14:24)*tournamentMultiplier;
+  const wonA=winnerId===match.side_a;
+  const updates=[];
+  for(const name of namesA){
+    const current=rankingFor(name);
+    const delta=performanceEloDelta(current.elo,avgB,wonA,kBase,scoreA,scoreB);
+    updates.push({name,elo:Math.max(100,current.elo+delta),wins:current.wins+(wonA?1:0),losses:current.losses+(wonA?0:1),kos_for:current.kos_for+scoreA,kos_against:current.kos_against+scoreB});
+  }
+  for(const name of namesB){
+    const current=rankingFor(name);
+    const delta=performanceEloDelta(current.elo,avgA,!wonA,kBase,scoreB,scoreA);
+    updates.push({name,elo:Math.max(100,current.elo+delta),wins:current.wins+(wonA?0:1),losses:current.losses+(wonA?1:0),kos_for:current.kos_for+scoreB,kos_against:current.kos_against+scoreA});
+  }
+  const {error}=await supabase.from("rankings").upsert(updates,{onConflict:"name"});
+  if(error)console.error("No se pudo actualizar el ELO:",error);
+}
+async function settleBets(matchId){
+  const m=state.matches.find(x=>x.id===matchId);if(!m)return;
+  const pending=state.bets.filter(b=>b.match_id===matchId&&b.status==="pending");
+  for(const bet of pending){
+    let won=false,refunded=false;
+    if(bet.bet_type==="winner") won=bet.selection?.participant_id===m.winner_id;
+    else if(bet.bet_type==="score") won=Number(bet.selection?.score_a)===Number(m.score_a)&&Number(bet.selection?.score_b)===Number(m.score_b);
+    else if(bet.bet_type==="handicap"){
+      const pid=bet.selection?.participant_id,line=Number(bet.selection?.line||0);
+      const selectedScore=pid===m.side_a?Number(m.score_a):Number(m.score_b);
+      const otherScore=pid===m.side_a?Number(m.score_b):Number(m.score_a);
+      const adjusted=selectedScore+line;
+      if(adjusted===otherScore)refunded=true;else won=adjusted>otherScore;
+    }else continue;
+    const payout=refunded?Number(bet.stake):won?Math.floor(Number(bet.stake)*Number(bet.locked_odds)):0;
+    await supabase.from("bets").update({status:refunded?"refunded":won?"won":"lost",payout}).eq("id",bet.id);
+    if(payout>0){
+      const account=state.accounts.find(a=>a.id===bet.account_id);
+      if(account){
+        account.credits+=payout;
+        await supabase.from("accounts").update({credits:account.credits}).eq("id",account.id);
+      }
+    }
+  }
+}
 async function finishMatch(id,walkover=false,side=null){
   const m=state.matches.find(x=>x.id===id);if(!m)return;
+  const button=document.querySelector(`[data-finish-match="${id}"]`)||document.querySelector(`[data-walkover-a="${id}"]`)||document.querySelector(`[data-walkover-b="${id}"]`);
+  if(button){button.disabled=true;button.textContent="Finalizando…"}
   let a=0,b=0,winner=null,status="finished";
   if(walkover){
     status="walkover";winner=side==="a"?m.side_a:m.side_b;a=side==="a"?1:0;b=side==="b"?1:0;
@@ -664,15 +758,25 @@ async function finishMatch(id,walkover=false,side=null){
     clearTimeout(liveScoreTimers.get(id));
     a=+document.querySelector(`[data-score-a="${id}"]`).value;
     b=+document.querySelector(`[data-score-b="${id}"]`).value;
-    if(a===b){alert("El marcador no puede terminar empatado.");return}
+    if(a===b){alert("El marcador no puede terminar empatado.");if(button)button.disabled=false;return}
     winner=a>b?m.side_a:m.side_b;
   }
-  await supabase.from("matches").update({score_a:a,score_b:b,status,winner_id:winner}).eq("id",id);
-  await updateRankingAfterMatch(m,a,b,winner);
-  await settleBets(id);
-  await loadAll();$("#adminTournamentSelect").value=m.tournament_id;renderMatchAdmin();
-  if(m.phase==="group") await autoGenerateKnockout(m.tournament_id);
+  // Cambio local inmediato para que la interfaz responda sin esperar Realtime.
+  Object.assign(m,{score_a:a,score_b:b,status,winner_id:winner});
+  renderMatchAdmin();renderKnockoutPanel();renderBetMatches();renderBetStandings();renderBetTournamentStandings();renderResults();
+  const {error}=await supabase.from("matches").update({score_a:a,score_b:b,status,winner_id:winner}).eq("id",id);
+  if(error){alert(error.message);await loadAll();return}
+  await Promise.all([updateRankingAfterMatch(m,a,b,winner),settleBets(id)]);
+  // Crear la siguiente fase antes de recargar, para que aparezca en la misma acción.
+  const eventTournament=tournamentById(m.tournament_id);
+  if(eventTournament?.config?.event_kind==="pvp"){
+    eventTournament.status="finished";
+    await supabase.from("tournaments").update({status:"finished"}).eq("id",m.tournament_id);
+  }else if(m.phase==="group") await autoGenerateKnockout(m.tournament_id);
   else await advanceKnockout(m.tournament_id,m.phase);
+  await loadAll();
+  $("#adminTournamentSelect").value=m.tournament_id;
+  renderMatchAdmin();renderKnockoutPanel();
 }
 
 async function autoGenerateKnockout(tid){
@@ -683,87 +787,55 @@ async function autoGenerateKnockout(tid){
   await generateKnockoutRows(tid);
 }
 async function generateKnockoutRows(tid){
-  const t=tournamentById(tid),q=t.config?.qualify_per_group||1;
+  const t=tournamentById(tid),q=Number(t.config?.qualify_per_group||1);
   const groups=[...new Set(tournamentParticipants(tid).map(p=>p.group_no))].sort((a,b)=>a-b);
   const table=standingsFor(tid);
-  const qualifiers=[];
-  for(const g of groups)qualifiers.push(...table.filter(x=>x.group_no===g).slice(0,q));
-
-  const repechage=t.config?.repechage ?? $("#enableRepechage").checked;
-  const third=t.config?.third_place ?? $("#enableThirdPlace").checked;
-  let rep=tournamentMatches(tid).find(m=>m.phase==="repechage");
-
-  if(repechage && !rep){
-    const extras=groups.map(g=>table.filter(x=>x.group_no===g)[q]).filter(Boolean);
-    if(extras.length>=2){
-      const {data,error}=await supabase.from("matches").insert({
-        tournament_id:tid,phase:"repechage",round_no:1,
-        side_a:extras[0].id,side_b:extras[1].id,status:"scheduled"
-      }).select().single();
-      if(error){alert(error.message);return}
-      rep=data;
-      $("#bracketStatus").textContent="Repechaje creado. Al finalizarlo se crearán las eliminatorias.";
-      await loadAll();$("#adminTournamentSelect").value=tid;renderMatchAdmin();renderKnockoutPanel();
-      return;
-    }
-  }
-
-  if(rep && !["finished","walkover"].includes(rep.status)){
-    $("#bracketStatus").textContent="Falta finalizar el repechaje.";
-    return;
-  }
-  if(rep?.winner_id)qualifiers.push(state.participants.find(p=>p.id===rep.winner_id));
-
+  // Solo clasifican los primeros N indicados al crear el torneo, por cada grupo.
+  const qualifiers=groups.flatMap(g=>table.filter(x=>x.group_no===g).slice(0,q));
+  const third=t.config?.third_place!==false;
   if(![2,4,8,16].includes(qualifiers.length)){
-    $("#bracketStatus").textContent=`Hay ${qualifiers.length} clasificados. Deben ser 2, 4, 8 o 16.`;
+    $("#bracketStatus").textContent=`Clasificaron ${qualifiers.length}. El total debe ser 2, 4, 8 o 16 para formar la llave.`;
     return;
   }
-
+  if(tournamentMatches(tid).some(m=>["quarterfinal","semifinal","final"].includes(m.phase))){renderKnockoutPanel();return}
   const phase=qualifiers.length===2?"final":qualifiers.length===4?"semifinal":"quarterfinal";
   const rows=[];
-  for(let i=0;i<qualifiers.length;i+=2){
-    rows.push({tournament_id:tid,phase,round_no:1,side_a:qualifiers[i].id,side_b:qualifiers[i+1].id,status:"scheduled"});
-  }
-  const {error}=await supabase.from("matches").insert(rows);
+  // Cruce simple entre clasificados; nunca incluye a participantes fuera del top N.
+  for(let i=0;i<qualifiers.length;i+=2)rows.push({tournament_id:tid,phase,round_no:1,side_a:qualifiers[i].id,side_b:qualifiers[i+1].id,status:"scheduled"});
+  const {data,error}=await supabase.from("matches").insert(rows).select();
   if(error){alert(error.message);return}
-  await supabase.from("tournaments").update({config:{...t.config,repechage,third_place:third}}).eq("id",tid);
-  await loadAll();$("#adminTournamentSelect").value=tid;renderMatchAdmin();renderKnockoutPanel();
+  if(data?.length)state.matches.push(...data);
+  await supabase.from("tournaments").update({config:{...t.config,third_place:third}}).eq("id",tid);
+  $("#adminTournamentSelect").value=tid;
+  renderMatchAdmin();renderKnockoutPanel();renderBetMatches();renderBetTournamentStandings();
 }
 async function advanceKnockout(tid,finishedPhase){
   const t=tournamentById(tid);if(!t)return;
-
-  if(finishedPhase==="repechage"){
-    await generateKnockoutRows(tid);
-    return;
-  }
-
+  let rows=[];
   if(finishedPhase==="quarterfinal"){
     const matches=tournamentMatches(tid).filter(m=>m.phase==="quarterfinal");
-    if(matches.length&&matches.every(m=>["finished","walkover"].includes(m.status)) &&
-       !tournamentMatches(tid).some(m=>m.phase==="semifinal")){
+    if(matches.length&&matches.every(m=>["finished","walkover"].includes(m.status))&&!tournamentMatches(tid).some(m=>m.phase==="semifinal")){
       const winners=matches.map(m=>m.winner_id);
-      const rows=[];
       for(let i=0;i<winners.length;i+=2)rows.push({tournament_id:tid,phase:"semifinal",round_no:1,side_a:winners[i],side_b:winners[i+1],status:"scheduled"});
-      await supabase.from("matches").insert(rows);
     }
-  }
-
-  if(finishedPhase==="semifinal"){
+  }else if(finishedPhase==="semifinal"){
     const semis=tournamentMatches(tid).filter(m=>m.phase==="semifinal");
-    if(semis.length===2&&semis.every(m=>["finished","walkover"].includes(m.status)) &&
-       !tournamentMatches(tid).some(m=>m.phase==="final")){
-      const winners=semis.map(m=>m.winner_id);
-      const losers=semis.map(m=>m.side_a===m.winner_id?m.side_b:m.side_a);
-      const rows=[{tournament_id:tid,phase:"final",round_no:1,side_a:winners[0],side_b:winners[1],status:"scheduled"}];
+    if(semis.length===2&&semis.every(m=>["finished","walkover"].includes(m.status))&&!tournamentMatches(tid).some(m=>m.phase==="final")){
+      const winners=semis.map(m=>m.winner_id),losers=semis.map(m=>m.side_a===m.winner_id?m.side_b:m.side_a);
+      rows=[{tournament_id:tid,phase:"final",round_no:1,side_a:winners[0],side_b:winners[1],status:"scheduled"}];
       if(t.config?.third_place!==false)rows.push({tournament_id:tid,phase:"third_place",round_no:1,side_a:losers[0],side_b:losers[1],status:"scheduled"});
-      await supabase.from("matches").insert(rows);
     }
-  }
-
-  if(finishedPhase==="final"){
+  }else if(finishedPhase==="final"){
+    t.status="finished";
     await supabase.from("tournaments").update({status:"finished"}).eq("id",tid);
   }
-  await loadAll();$("#adminTournamentSelect").value=tid;renderMatchAdmin();renderKnockoutPanel();
+  if(rows.length){
+    const {data,error}=await supabase.from("matches").insert(rows).select();
+    if(error){alert(error.message);return}
+    if(data?.length)state.matches.push(...data);
+  }
+  $("#adminTournamentSelect").value=tid;
+  renderMatchAdmin();renderKnockoutPanel();renderBetMatches();renderBetTournamentStandings();
 }
 function renderKnockoutPanel(){
   const tid=$("#adminTournamentSelect").value,t=tournamentById(tid);if(!t)return;
@@ -789,6 +861,53 @@ $("#enableThirdPlace").onchange=async()=>{
   await supabase.from("tournaments").update({config:{...t.config,third_place:$("#enableThirdPlace").checked}}).eq("id",tid);
   await loadAll();$("#adminTournamentSelect").value=tid;renderKnockoutPanel();
 };
+
+
+function pvpMemberSelect(side,index){
+  return `<div><label>${side} · integrante ${index+1}</label><select data-pvp-member="${side}-${index}">${accountOptions()}</select></div>`;
+}
+function renderPvpSides(){
+  const format=$("#pvpFormat")?.value||"1v1",team=format==="2v2";
+  if(!$("#pvpSides"))return;
+  $("#pvpSides").innerHTML=`<div class="card pvp-side"><h3>Lado A</h3><div class="pvp-members">${pvpMemberSelect("a",0)}${team?pvpMemberSelect("a",1):""}</div></div><div class="card pvp-side"><h3>Lado B</h3><div class="pvp-members">${pvpMemberSelect("b",0)}${team?pvpMemberSelect("b",1):""}</div></div>`;
+}
+$("#pvpFormat").onchange=renderPvpSides;
+$("#createPvpEvent").onclick=async()=>{
+  const name=$("#pvpEventName").value.trim(),format=$("#pvpFormat").value,team=format==="2v2";
+  if(!name){alert("Escribe el nombre del evento.");return}
+  const ids=$$("[data-pvp-member]").map(x=>x.value);
+  if(ids.some(x=>!x)){alert("Selecciona todos los participantes.");return}
+  if(new Set(ids).size!==ids.length){alert("No puedes repetir una cuenta en la misma pelea.");return}
+  const sideMembers=side=>ids.filter((_,i)=>team?(side==="a"?i<2:i>=2):(side==="a"?i===0:i===1)).map(id=>{const a=state.accounts.find(x=>x.id===id);return{id:a.id,name:a.username,type:"account"}});
+  const aMembers=sideMembers("a"),bMembers=sideMembers("b");
+  const config={event_kind:"pvp",groups:1,qualify_per_group:1,participant_count:2,third_place:false,repechage:false};
+  const {data:t,error:te}=await supabase.from("tournaments").insert({name,format,status:"active",config}).select().single();
+  if(te){alert(te.message);return}
+  const parts=[aMembers,bMembers].map((members,i)=>({tournament_id:t.id,display_name:members.map(m=>m.name).join(" + "),kind:team?"team":"account",members,group_no:1,seed_elo:participantEloFromMembers(members)}));
+  const {data:ps,error:pe}=await supabase.from("tournament_participants").insert(parts).select();
+  if(pe){alert(pe.message);await supabase.from("tournaments").delete().eq("id",t.id);return}
+  const {error:me}=await supabase.from("matches").insert({tournament_id:t.id,phase:"group",round_no:1,group_no:1,side_a:ps[0].id,side_b:ps[1].id,status:"scheduled"});
+  if(me){alert(me.message);return}
+  $("#pvpEventName").value="";await loadAll();renderPvpSides();
+};
+function renderPvpEvents(){
+  if(!$("#pvpEventList"))return;
+  const events=state.tournaments.filter(t=>t.config?.event_kind==="pvp");
+  $("#pvpEventList").innerHTML=events.map(t=>{
+    const m=tournamentMatches(t.id)[0];
+    return `<div class="panel"><div class="section-heading"><div><strong>${esc(t.name)}</strong><div class="muted">${esc(t.format)} · ${esc(t.status)}</div></div><button class="danger" data-delete-pvp="${t.id}">Eliminar evento</button></div>${m?matchCardAdmin(m):'<div class="muted">Sin pelea.</div>'}</div>`;
+  }).join("")||'<div class="muted">No hay peleas individuales creadas.</div>';
+  $$('[data-start-match]').forEach(b=>b.onclick=()=>startMatch(b.dataset.startMatch));
+  $$('[data-finish-match]').forEach(b=>b.onclick=()=>finishMatch(b.dataset.finishMatch,false));
+  $$('[data-walkover-a]').forEach(b=>b.onclick=()=>finishMatch(b.dataset.walkoverA,true,"a"));
+  $$('[data-walkover-b]').forEach(b=>b.onclick=()=>finishMatch(b.dataset.walkoverB,true,"b"));
+  $$('[data-save-schedule]').forEach(b=>b.onclick=()=>saveSchedule(b.dataset.saveSchedule));
+  $$('[data-save-odds]').forEach(b=>b.onclick=()=>saveManualOdds(b.dataset.saveOdds));
+  $$('[data-clear-odds]').forEach(b=>b.onclick=()=>clearManualOdds(b.dataset.clearOdds));
+  $$('[data-live-score]').forEach(input=>input.oninput=()=>queueLiveScoreSave(input.dataset.liveScore));
+  $$('[data-delete-pvp]').forEach(b=>b.onclick=async()=>{if(confirm("¿Eliminar esta pelea individual?")){await supabase.from("tournaments").delete().eq("id",b.dataset.deletePvp);await loadAll()}});
+}
+renderPvpSides();
 
 const dailyPrizes=[
   {label:"500 créditos",weight:32,credits:500},{label:"1000 créditos",weight:8,credits:1000},

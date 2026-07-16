@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#090d14">
   <title>Liga Pokémon · Poképachanga</title>
-  <link rel="stylesheet" href="./styles.css?v=5">
+  <link rel="stylesheet" href="./styles.css?v=6">
 </head>
 <body>
 <header>
@@ -39,7 +39,7 @@
     <button data-view="wheel">🎡 Ruletas</button>
     <button data-view="accounts" class="admin-only">👥 Cuentas</button>
     <button data-view="credits" class="admin-only">💳 Créditos</button>
-    <button data-view="tournaments" class="admin-only">🏆 Torneos</button>
+    <button data-view="events" class="admin-only">🎟️ Eventos</button>
   </nav>
 
   <section id="view-home" class="view active">
@@ -75,7 +75,10 @@
 
   <section id="view-results" class="view">
     <div class="panel">
-      <h2>Estadísticas generales</h2>
+      <div class="section-heading">
+        <h2>Estadísticas generales</h2>
+        <button id="resetAllRankings" class="danger admin-only">Reiniciar todas las estadísticas</button>
+      </div>
       <div id="generalStats"></div>
     </div>
     <div class="panel">
@@ -126,7 +129,13 @@
     </div>
   </section>
 
-  <section id="view-tournaments" class="view admin-only">
+  <section id="view-events" class="view admin-only">
+    <div class="subnav" id="eventSubnav">
+      <button data-event-tab="tournaments" class="active">🏆 Torneos</button>
+      <button data-event-tab="pvp">⚔️ Peleas individuales</button>
+    </div>
+
+    <div id="event-tab-tournaments" class="event-tab active">
     <div class="panel">
       <h2>1. Crear torneo</h2>
       <div class="grid">
@@ -170,6 +179,23 @@
       <div id="bracketStatus" class="muted" style="margin-top:10px"></div>
       <div id="knockoutBracket" class="grid" style="margin-top:14px"></div>
     </div>
+    </div>
+
+    <div id="event-tab-pvp" class="event-tab">
+      <div class="panel">
+        <h2>Crear pelea individual</h2>
+        <div class="grid">
+          <div><label>Nombre del evento</label><input id="pvpEventName" placeholder="Ej: Reto amistoso"></div>
+          <div><label>Modalidad</label><select id="pvpFormat"><option value="1v1">1 vs 1</option><option value="2v2">2 vs 2</option><option value="1v1-double">1 vs 1 doble</option></select></div>
+        </div>
+        <div id="pvpSides" class="grid" style="margin-top:12px"></div>
+        <button id="createPvpEvent" style="margin-top:12px">Crear pelea</button>
+      </div>
+      <div class="panel">
+        <h2>Peleas individuales</h2>
+        <div id="pvpEventList"></div>
+      </div>
+    </div>
   </section>
 </main>
 
@@ -196,6 +222,6 @@
   </div>
 </div>
 
-<script type="module" src="./app.js?v=5"></script>
+<script type="module" src="./app.js?v=6"></script>
 </body>
 </html>

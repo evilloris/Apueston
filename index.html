@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#090d14">
+  <title>Liga Pokémon · Poképachanga</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <div class="brand">Liga Pokémon · Poképachanga</div>
+    <div id="sessionLabel" class="muted">Sin sesión</div>
+    <div id="walletLabel" class="wallet">💰 —</div>
+    <button id="loginButton" class="secondary">Entrar</button>
+    <button id="logoutButton" class="secondary" hidden>Salir</button>
+    <button id="adminButton" class="secondary">🛠️ Organizador</button>
+  </div>
+</header>
+
+<button class="drawer-button left" id="rewardDrawerButton" title="Mis recompensas">🎁</button>
+<aside class="drawer left" id="rewardDrawer">
+  <h2>Mis recompensas</h2>
+  <div id="myRewards"></div>
+</aside>
+
+<button class="drawer-button right admin-only" id="deliveryDrawerButton" title="Entregas">📦</button>
+<aside class="drawer right" id="deliveryDrawer">
+  <h2>Entrega de recompensas</h2>
+  <div id="deliveryList"></div>
+</aside>
+
+<main>
+  <nav class="nav" id="nav">
+    <button data-view="home" class="active">🏠 Inicio</button>
+    <button data-view="betting">🎰 Apuestas</button>
+    <button data-view="results">📜 Resultados</button>
+    <button data-view="wheel">🎡 Ruletas</button>
+    <button data-view="accounts" class="admin-only">👥 Cuentas</button>
+    <button data-view="credits" class="admin-only">💳 Créditos</button>
+    <button data-view="tournaments" class="admin-only">🏆 Torneos</button>
+  </nav>
+
+  <section id="view-home" class="view active">
+    <div class="panel">
+      <h2>Eventos activos</h2>
+      <div id="activeEvents" class="grid"></div>
+    </div>
+    <div class="panel">
+      <h2>Tabla de apostadores</h2>
+      <div id="leaderboard"></div>
+    </div>
+  </section>
+
+  <section id="view-betting" class="view">
+    <div class="panel">
+      <h2>Seleccionar torneo</h2>
+      <select id="betTournamentSelect"></select>
+    </div>
+    <div class="panel">
+      <h2>Enfrentamientos abiertos</h2>
+      <div id="betMatches" class="grid"></div>
+    </div>
+    <div class="panel">
+      <h2>Mis apuestas</h2>
+      <div id="myBets"></div>
+    </div>
+  </section>
+
+  <section id="view-results" class="view">
+    <div class="panel">
+      <h2>Estadísticas generales</h2>
+      <div id="generalStats"></div>
+    </div>
+    <div class="panel">
+      <h2>Resultados por torneo</h2>
+      <select id="resultTournamentSelect"></select>
+      <div id="standings" style="margin-top:14px"></div>
+      <div id="finishedMatches" style="margin-top:14px"></div>
+    </div>
+  </section>
+
+  <section id="view-wheel" class="view">
+    <div class="panel">
+      <h2>Ruleta diaria</h2>
+      <p class="muted">Un giro gratuito por cuenta y por día según la hora de Bolivia.</p>
+      <div class="wheel-wrap"><div id="dailyWheel" class="wheel"></div><div class="wheel-center">DIARIA</div></div>
+      <button id="spinDailyButton" style="width:100%;margin-top:16px">Girar una vez al día</button>
+      <div id="dailyResult" class="card" style="margin-top:12px">Sin girar.</div>
+    </div>
+    <div class="panel">
+      <h2>Ruleta Pokémon · 100 créditos</h2>
+      <div class="wheel-wrap"><div id="paidWheel" class="wheel"></div><div class="wheel-center">100</div></div>
+      <button id="spinPaidButton" style="width:100%;margin-top:16px">Girar por 100 créditos</button>
+      <div id="paidResult" class="card" style="margin-top:12px">Sin girar.</div>
+      <button id="acceptPaidReward" hidden style="width:100%;margin-top:10px">Aceptar recompensa</button>
+    </div>
+  </section>
+
+  <section id="view-accounts" class="view admin-only">
+    <div class="panel">
+      <h2>Crear cuenta</h2>
+      <div class="row">
+        <div><label>Nombre</label><input id="newUsername"></div>
+        <div><label>Contraseña</label><input id="newPassword"></div>
+        <button id="generatePassword" class="secondary">🎲 Generar</button>
+        <button id="createAccount">Crear cuenta</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Cuentas registradas</h2>
+      <div id="accountAdminList"></div>
+    </div>
+  </section>
+
+  <section id="view-credits" class="view admin-only">
+    <div class="panel">
+      <h2>Administración de créditos</h2>
+      <div id="creditAdminList"></div>
+    </div>
+  </section>
+
+  <section id="view-tournaments" class="view admin-only">
+    <div class="panel">
+      <h2>Crear torneo</h2>
+      <div class="grid">
+        <div><label>Nombre</label><input id="tournamentName"></div>
+        <div><label>Formato</label><select id="tournamentFormat"><option value="1v1">1 vs 1</option><option value="2v2">2 vs 2</option><option value="1v1-double">1 vs 1 doble</option></select></div>
+        <div><label>Grupos</label><input id="tournamentGroups" type="number" min="1" value="2"></div>
+        <div><label>Clasifican por grupo</label><input id="qualifyPerGroup" type="number" min="1" value="2"></div>
+      </div>
+      <button id="createTournament" style="margin-top:12px">Crear torneo</button>
+    </div>
+    <div class="panel">
+      <h2>Torneos</h2>
+      <div id="tournamentAdminList" class="grid"></div>
+    </div>
+    <div class="panel" id="participantPanel" hidden>
+      <h2>Participantes</h2>
+      <div class="row">
+        <div><label>Torneo</label><select id="adminTournamentSelect"></select></div>
+        <div><label>Tipo</label><select id="participantKind"><option value="account">Cuenta</option><option value="bot">Bot</option><option value="team">Equipo 2v2</option></select></div>
+        <div><label>Cuenta / nombre</label><select id="participantAccount"></select><input id="participantBot" hidden placeholder="Nombre del bot"></div>
+        <div id="teamSecondWrap" hidden><label>Segundo integrante</label><select id="participantSecondAccount"></select></div>
+        <div><label>Grupo</label><input id="participantGroup" type="number" min="1" value="1"></div>
+        <button id="addParticipant">Agregar</button>
+      </div>
+      <div id="participantList" style="margin-top:14px"></div>
+      <button id="generateFixture" style="margin-top:12px">Generar fase de grupos</button>
+    </div>
+    <div class="panel" id="matchAdminPanel" hidden>
+      <h2>Partidas y eliminatorias</h2>
+      <div id="matchAdminList"></div>
+      <button id="generateBracket" style="margin-top:12px">Generar eliminatorias</button>
+      <div id="bracketStatus" class="muted" style="margin-top:8px"></div>
+    </div>
+  </section>
+</main>
+
+<div class="modal" id="loginModal">
+  <div class="modal-box">
+    <h2>Entrar</h2>
+    <div class="grid">
+      <div><label>Usuario</label><input id="loginUsername"></div>
+      <div><label>Contraseña</label><input id="loginPassword" type="password"></div>
+    </div>
+    <div class="row" style="margin-top:14px"><button id="confirmLogin">Entrar</button><button class="secondary" data-close-modal>Cerrar</button></div>
+  </div>
+</div>
+
+<div class="modal" id="betModal">
+  <div class="modal-box">
+    <h2 id="betModalTitle">Apostar</h2>
+    <input type="hidden" id="betMatchId">
+    <div><label>Tipo</label><select id="betType"><option value="winner">Quién gana</option><option value="handicap">Hándicap</option><option value="score">Marcador exacto</option></select></div>
+    <div id="betDynamicFields" style="margin-top:12px"></div>
+    <div style="margin-top:12px"><label>Monto</label><input id="betStake" type="number" min="1" value="50"></div>
+    <div id="betOddsPreview" class="card" style="margin-top:12px"></div>
+    <div class="row" style="margin-top:14px"><button id="confirmBet">Confirmar</button><button class="secondary" data-close-modal>Cerrar</button></div>
+  </div>
+</div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>

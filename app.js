@@ -3,7 +3,10 @@ import { CONFIG } from "./config.js";
 
 const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_PUBLISHABLE_KEY);
 const $ = s => document.querySelector(s);
-const $$ = (s, root=document) => [...root.querySelectorAll(s)];
+const $$ = (s, root=document) => {
+  const scope = typeof root === "string" ? document.querySelector(root) : root;
+  return scope ? [...scope.querySelectorAll(s)] : [];
+};
 const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = n => new Intl.NumberFormat("es-BO").format(Number(n || 0));
 

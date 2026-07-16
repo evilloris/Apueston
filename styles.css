@@ -137,3 +137,15 @@ table{min-width:620px}
 .pokemon-result{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;min-height:74px}
 .pokemon-result strong{font-size:1.25rem;color:#fff}
 .pokemon-result span{font-size:.82rem;color:#f5bd16;font-weight:800;text-transform:uppercase;letter-spacing:.06em}
+
+/* Ruletas v8 */
+.weekly-label{margin:10px 0 12px;color:var(--yellow);font-weight:700;text-transform:capitalize}
+.prize-slots{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin:12px 0 18px}
+.prize-slot{display:flex;flex-direction:column;gap:3px;padding:10px;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.025)}
+.prize-slot span,.mini-result span{font-size:.78rem;color:var(--muted)}
+.wheel-actions>*{flex:1;min-width:180px}
+.ten-results{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin-top:10px}
+.mini-result{display:flex;flex-direction:column;gap:4px}
+.drawer{z-index:60;box-shadow:0 12px 40px #000a;overflow:auto}
+.drawer-button{z-index:61;pointer-events:auto}
+@media(max-width:620px){.wheel-actions{display:grid}.wheel-actions>*{width:100%}.prize-slots{grid-template-columns:1fr 1fr}}

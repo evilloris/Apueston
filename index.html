@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#090d14">
   <title>Liga Pokémon · Poképachanga</title>
-  <link rel="stylesheet" href="./styles.css?v=6">
+  <link rel="stylesheet" href="./styles.css?v=8">
 </head>
 <body>
 <header>
@@ -91,18 +91,24 @@
 
   <section id="view-wheel" class="view">
     <div class="panel">
-      <h2>Ruleta Pokémon diaria</h2>
-      <p class="muted">Un Pokémon gratuito por cuenta y por día. Los Pokémon comunes son mucho más probables que los difíciles, muy difíciles y casi imposibles.</p>
-      <div class="wheel-wrap"><div id="dailyWheel" class="wheel"></div><div class="wheel-center">PKM</div></div>
-      <button id="spinDailyButton" style="width:100%;margin-top:16px">Girar ruleta Pokémon</button>
+      <h2>Ruleta diaria</h2>
+      <p class="muted">Un giro gratuito por cuenta cada día. La ruleta tiene 7 premios y se renueva cada domingo. Siempre incluye un Pokémon casi imposible: legendario, mítico, ultraente o paradoja.</p>
+      <div id="weeklyRefreshLabel" class="weekly-label"></div>
+      <div id="dailyPrizeSlots" class="prize-slots"></div>
+      <div class="wheel-wrap"><div id="dailyWheel" class="wheel"></div><div class="wheel-center">DIARIA</div></div>
+      <button id="spinDailyButton" style="width:100%;margin-top:16px">Girar gratis</button>
       <div id="dailyResult" class="card pokemon-result" style="margin-top:12px"><strong>Sin girar</strong><span>—</span></div>
     </div>
     <div class="panel">
-      <h2>Ruleta de premios · 100 créditos</h2>
-      <div class="wheel-wrap"><div id="paidWheel" class="wheel"></div><div class="wheel-center">100</div></div>
-      <button id="spinPaidButton" style="width:100%;margin-top:16px">Girar por 100 créditos</button>
-      <div id="paidResult" class="card" style="margin-top:12px">Sin girar.</div>
-      <button id="acceptPaidReward" hidden style="width:100%;margin-top:10px">Aceptar recompensa</button>
+      <h2>Ruleta de Pokémon</h2>
+      <p class="muted">Cada tiro entrega un Pokémon. Un tiro cuesta 100 créditos y 10 tiros instantáneos cuestan 1.000 créditos.</p>
+      <div class="wheel-wrap"><div id="paidWheel" class="wheel"></div><div class="wheel-center">PKM</div></div>
+      <div class="row wheel-actions" style="margin-top:16px">
+        <button id="spinPaidButton">1 tiro · 100</button>
+        <button id="spinPaidTenButton" class="secondary">10 tiros · 1.000</button>
+      </div>
+      <div id="paidResult" class="card pokemon-result" style="margin-top:12px"><strong>Sin girar</strong><span>—</span></div>
+      <div id="paidTenResults" class="ten-results"></div>
     </div>
   </section>
 
@@ -222,6 +228,6 @@
   </div>
 </div>
 
-<script type="module" src="./app.js?v=6"></script>
+<script type="module" src="./app.js?v=8"></script>
 </body>
 </html>

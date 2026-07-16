@@ -67,7 +67,7 @@ function renderAll(){
   $("#sessionLabel").textContent=state.account?state.account.username:"Sin sesión";
   $("#walletLabel").textContent=state.account?`💰 ${money(state.account.credits)}`:"💰 —";
   $("#loginButton").hidden=!!state.account; $("#logoutButton").hidden=!state.account;
-  renderLeaderboard(); renderActiveEvents(); renderTournamentSelects(); renderBetMatches();
+  renderLeaderboard(); renderActiveEvents(); renderTournamentSelects(); renderBetMatches(); renderBetTournamentStandings(); renderBetStandings();
   renderMyBets(); renderGeneralStats(); renderResults(); renderAccountsAdmin();
   renderCreditsAdmin(); renderTournamentsAdmin(); renderRewards(); updateDailyButton();
 }
@@ -118,7 +118,7 @@ function renderTournamentSelects(){
   $("#participantPanel").hidden=!$("#adminTournamentSelect").value;
   $("#matchAdminPanel").hidden=!$("#adminTournamentSelect").value;
 }
-$("#betTournamentSelect").onchange=renderBetMatches;
+$("#betTournamentSelect").onchange=()=>{renderBetMatches();renderBetStandings()};
 $("#resultTournamentSelect").onchange=renderResults;
 $("#adminTournamentSelect").onchange=()=>{renderParticipantList();renderMatchAdmin();$("#participantPanel").hidden=false;$("#matchAdminPanel").hidden=false};
 
@@ -126,6 +126,37 @@ function dynamicOdds(match){
   const a=state.participants.find(p=>p.id===match.side_a),b=state.participants.find(p=>p.id===match.side_b);
   const ra=rankingFor(a?.display_name).elo, rb=rankingFor(b?.display_name).elo;
   return oddsFromElo(ra,rb);
+}
+
+function renderBetStandings(){
+  const tid=$("#betTournamentSelect").value;
+  if(!tid){$("#betStandings").innerHTML='<div class="muted">Selecciona un torneo.</div>';return}
+  const t=tournamentById(tid),q=t?.config?.qualify_per_group||1,rows=standingsFor(tid);
+  const groups=[...new Set(rows.map(r=>r.group_no))];
+  $("#betStandings").innerHTML=groups.map(g=>{
+    const list=rows.filter(r=>r.group_no===g);
+    return `<div class="standings-group"><h3>Grupo ${groupLetter(g)}</h3><table><thead><tr><th>#</th><th>Jugador/equipo</th><th>PJ</th><th>PG</th><th>Pts</th><th>KO+</th><th>KO-</th><th>Dif.</th></tr></thead><tbody>${list.map((x,i)=>`<tr class="${i<q?"qualifier-row":""}"><td>${i+1}</td><td>${esc(x.display_name)}</td><td>${x.pj}</td><td>${x.pg}</td><td>${x.pts}</td><td>${x.kf}</td><td>${x.kc}</td><td>${x.kf-x.kc}</td></tr>`).join("")}</tbody></table></div>`;
+  }).join("")||'<div class="muted">Sin participantes.</div>';
+}
+
+
+function renderBetTournamentStandings(){
+  const box=$("#betTournamentStandings");
+  if(!box)return;
+  const tid=$("#betTournamentSelect").value;
+  if(!tid){box.innerHTML="";return}
+  const rows=standingsFor(tid);
+  const groups=[...new Set(rows.map(r=>r.group_no))].sort((a,b)=>a-b);
+  box.innerHTML=groups.map(g=>`
+    <div>
+      <h3>Grupo ${groupLetter(g)}</h3>
+      <table>
+        <thead><tr><th>#</th><th>Jugador/equipo</th><th>PJ</th><th>PG</th><th>PTS</th><th>KO+</th><th>KO-</th><th>DIF</th></tr></thead>
+        <tbody>${rows.filter(r=>r.group_no===g).map((r,i)=>`
+          <tr><td>${i+1}</td><td>${esc(r.display_name)}</td><td>${r.pj}</td><td>${r.pg}</td><td>${r.pts}</td><td>${r.kf}</td><td>${r.kc}</td><td>${r.kf-r.kc}</td></tr>`).join("")}
+        </tbody>
+      </table>
+    </div>`).join("")||'<div class="muted">La tabla aparecerá cuando se asignen participantes.</div>';
 }
 function renderBetMatches(){
   const tid=$("#betTournamentSelect").value;
@@ -247,114 +278,411 @@ async function changeCredits(id,sign){
   await supabase.from("accounts").update({credits:Math.max(0,a.credits+sign*amount)}).eq("id",id);loadAll();
 }
 
+
+const groupLetter = n => String.fromCharCode(64 + Math.max(1, Math.min(26, Number(n))));
+function tournamentById(id){ return state.tournaments.find(t=>t.id===id); }
+function tournamentParticipants(id){ return state.participants.filter(p=>p.tournament_id===id); }
+function tournamentMatches(id){ return state.matches.filter(m=>m.tournament_id===id); }
+function isGroupStageComplete(id){
+  const ms=tournamentMatches(id).filter(m=>m.phase==="group");
+  return ms.length>0 && ms.every(m=>["finished","walkover"].includes(m.status));
+}
+function accountOptions(selected=""){
+  return '<option value="">— Selecciona cuenta —</option>'+
+    state.accounts.map(a=>`<option value="${a.id}" ${a.id===selected?"selected":""}>${esc(a.username)}</option>`).join("");
+}
+function botOrAccountName(member){
+  if(!member)return "";
+  if(member.type==="account") return state.accounts.find(a=>a.id===member.id)?.username || member.name || "";
+  return member.name || "";
+}
+function participantEloFromMembers(members){
+  if(!members?.length)return 1000;
+  return Math.round(members.reduce((sum,m)=>sum+rankingFor(botOrAccountName(m)).elo,0)/members.length);
+}
+
 $("#createTournament").onclick=async()=>{
-  const name=$("#tournamentName").value.trim(),format=$("#tournamentFormat").value,groups=+$("#tournamentGroups").value,qualify=+$("#qualifyPerGroup").value;
-  if(!name||groups<1||qualify<1){alert("Datos inválidos.");return}
-  const {error}=await supabase.from("tournaments").insert({name,format,config:{groups,qualify_per_group:qualify,third_place:true,repechage:false}});
-  if(error){alert(error.message);return}$("#tournamentName").value="";await loadAll();
+  const name=$("#tournamentName").value.trim();
+  const format=$("#tournamentFormat").value;
+  const participant_count=+$("#tournamentParticipantCount").value;
+  const groups=+$("#tournamentGroups").value;
+  const qualify=+$("#qualifyPerGroup").value;
+
+  if(!name){alert("Escribe el nombre del torneo.");return}
+  if(participant_count<2||participant_count>32){alert("La cantidad de participantes debe estar entre 2 y 32.");return}
+  if(groups<1||groups>26||groups>participant_count){alert("La cantidad de grupos debe estar entre 1 y 26 y no superar los participantes.");return}
+  if(qualify<1||qualify>Math.ceil(participant_count/groups)){alert("La cantidad que clasifica por grupo no es válida.");return}
+
+  const config={
+    groups, qualify_per_group:qualify, participant_count,
+    third_place:true, repechage:false
+  };
+  const {data,error}=await supabase.from("tournaments").insert({name,format,config}).select().single();
+  if(error){alert(error.message);return}
+  $("#tournamentName").value="";
+  await loadAll();
+  $("#adminTournamentSelect").value=data.id;
+  $("#participantPanel").hidden=false;
+  $("#matchAdminPanel").hidden=false;
+  $("#knockoutPanel").hidden=false;
+  renderParticipantCards();
+  renderMatchAdmin();
+  renderKnockoutPanel();
 };
+
 function renderTournamentsAdmin(){
-  $("#tournamentAdminList").innerHTML=state.tournaments.map(t=>`<div class="card"><strong>${esc(t.name)}</strong><div class="muted">${esc(t.format)} · ${esc(t.status)}</div><button class="secondary" data-edit-tournament="${t.id}">Administrar</button> <button class="danger" data-delete-tournament="${t.id}">Eliminar</button></div>`).join("")||'<div class="muted">Sin torneos.</div>';
-  $$("[data-edit-tournament]").forEach(b=>b.onclick=()=>{$("#adminTournamentSelect").value=b.dataset.editTournament;$("#participantPanel").hidden=false;$("#matchAdminPanel").hidden=false;renderParticipantList();renderMatchAdmin()});
-  $$("[data-delete-tournament]").forEach(b=>b.onclick=async()=>{if(confirm("¿Eliminar torneo completo?")){await supabase.from("tournaments").delete().eq("id",b.dataset.deleteTournament);loadAll()}});
+  $("#tournamentAdminList").innerHTML=state.tournaments.map(t=>{
+    const count=t.config?.participant_count||0;
+    return `<div class="card">
+      <strong>${esc(t.name)}</strong>
+      <div class="muted">${esc(t.format)} · ${count} participantes · ${t.config?.groups||1} grupos · ${esc(t.status)}</div>
+      <button class="secondary" data-edit-tournament="${t.id}">Administrar</button>
+      <button class="danger" data-delete-tournament="${t.id}">Eliminar</button>
+    </div>`;
+  }).join("")||'<div class="muted">Sin torneos.</div>';
+
+  $$("[data-edit-tournament]").forEach(b=>b.onclick=()=>{
+    $("#adminTournamentSelect").value=b.dataset.editTournament;
+    $("#participantPanel").hidden=false;$("#matchAdminPanel").hidden=false;$("#knockoutPanel").hidden=false;
+    renderParticipantCards();renderMatchAdmin();renderKnockoutPanel();
+  });
+  $$("[data-delete-tournament]").forEach(b=>b.onclick=async()=>{
+    if(confirm("¿Eliminar torneo completo?")){
+      await supabase.from("tournaments").delete().eq("id",b.dataset.deleteTournament);
+      await loadAll();
+    }
+  });
 }
-$("#participantKind").onchange=()=>{
-  const k=$("#participantKind").value;
-  $("#participantAccount").hidden=k==="bot";$("#participantBot").hidden=k!=="bot";$("#teamSecondWrap").hidden=k!=="team";
+
+$("#adminTournamentSelect").onchange=()=>{
+  const has=!!$("#adminTournamentSelect").value;
+  $("#participantPanel").hidden=!has;$("#matchAdminPanel").hidden=!has;$("#knockoutPanel").hidden=!has;
+  if(has){renderParticipantCards();renderMatchAdmin();renderKnockoutPanel()}
 };
-function accountOptionHtml(){return '<option value="">— Selecciona —</option>'+state.accounts.map(a=>`<option value="${a.id}">${esc(a.username)}</option>`).join("")}
-function renderParticipantList(){
-  $("#participantAccount").innerHTML=accountOptionHtml();$("#participantSecondAccount").innerHTML=accountOptionHtml();
-  const tid=$("#adminTournamentSelect").value;
-  const ps=state.participants.filter(p=>p.tournament_id===tid);
-  $("#participantList").innerHTML=ps.map(p=>`<div class="card">${esc(p.display_name)} · grupo ${p.group_no} <button class="danger" data-delete-participant="${p.id}">Quitar</button></div>`).join("")||'<div class="muted">Sin participantes.</div>';
-  $$("[data-delete-participant]").forEach(b=>b.onclick=async()=>{await supabase.from("tournament_participants").delete().eq("id",b.dataset.deleteParticipant);loadAll()});
-}
-$("#addParticipant").onclick=async()=>{
-  const tid=$("#adminTournamentSelect").value,kind=$("#participantKind").value,group_no=+$("#participantGroup").value;
-  if(!tid)return;
-  let display_name,members=[];
-  if(kind==="bot"){display_name=$("#participantBot").value.trim();members=[{name:display_name,type:"bot"}]}
-  else if(kind==="team"){
-    const a=state.accounts.find(x=>x.id===$("#participantAccount").value),b=state.accounts.find(x=>x.id===$("#participantSecondAccount").value);
-    if(!a||!b||a.id===b.id){alert("Selecciona dos cuentas distintas.");return}
-    display_name=`${a.username} + ${b.username}`;members=[{id:a.id,name:a.username,type:"account"},{id:b.id,name:b.username,type:"account"}];
-  }else{
-    const a=state.accounts.find(x=>x.id===$("#participantAccount").value);if(!a){alert("Selecciona una cuenta.");return}
-    display_name=a.username;members=[{id:a.id,name:a.username,type:"account"}];
+
+function participantCardHtml(t,index,existing){
+  const team=t.format==="2v2";
+  const members=existing?.members||[];
+  const kind=existing?.kind==="bot"?"bot":team?"team":"account";
+  const groupNo=existing?.group_no||((index%(t.config?.groups||1))+1);
+
+  function memberFields(memberIndex,label){
+    const m=members[memberIndex]||{};
+    const isBot=m.type==="bot";
+    return `<div class="member-block" data-member="${memberIndex}">
+      <label>${label} · tipo</label>
+      <select data-member-kind="${memberIndex}">
+        <option value="account" ${!isBot?"selected":""}>Cuenta creada</option>
+        <option value="bot" ${isBot?"selected":""}>Bot</option>
+      </select>
+      <div data-account-wrap="${memberIndex}" ${isBot?"hidden":""}>
+        <label>Cuenta</label><select data-member-account="${memberIndex}">${accountOptions(m.id||"")}</select>
+      </div>
+      <div data-bot-wrap="${memberIndex}" ${!isBot?"hidden":""}>
+        <label>Nombre del bot</label><input data-member-bot="${memberIndex}" value="${esc(isBot?m.name||"":"")}" placeholder="Ej: Bot Brock">
+      </div>
+    </div>`;
   }
-  if(!display_name){alert("Nombre inválido.");return}
-  const seed_elo=Math.round(members.reduce((s,m)=>s+rankingFor(m.name).elo,0)/members.length);
-  const {error}=await supabase.from("tournament_participants").insert({tournament_id:tid,display_name,kind,members,group_no,seed_elo});
-  if(error){alert(error.message);return}await loadAll();$("#adminTournamentSelect").value=tid;renderParticipantList();
+  return `<div class="card participant-slot" data-slot="${index}">
+    <div class="slot-number">#${index+1}</div>
+    <strong>${team?"Equipo":"Jugador"} ${index+1}</strong>
+    ${memberFields(0,team?"Integrante 1":"Participante")}
+    ${team?memberFields(1,"Integrante 2"):""}
+    <div style="margin-top:10px"><label>Grupo</label>
+      <select data-slot-group>${Array.from({length:t.config?.groups||1},(_,i)=>`<option value="${i+1}" ${i+1===groupNo?"selected":""}>Grupo ${groupLetter(i+1)}</option>`).join("")}</select>
+    </div>
+  </div>`;
+}
+function renderParticipantCards(){
+  const tid=$("#adminTournamentSelect").value,t=tournamentById(tid);if(!t)return;
+  const existing=tournamentParticipants(tid);
+  const count=t.config?.participant_count||existing.length||2;
+  $("#participantCards").innerHTML=Array.from({length:count},(_,i)=>participantCardHtml(t,i,existing[i])).join("");
+  $$("[data-member-kind]").forEach(sel=>sel.onchange=()=>{
+    const block=sel.closest("[data-member]");
+    block.querySelector(`[data-account-wrap="${sel.dataset.memberKind}"]`).hidden=sel.value==="bot";
+    block.querySelector(`[data-bot-wrap="${sel.dataset.memberKind}"]`).hidden=sel.value!=="bot";
+  });
+}
+
+function readParticipantCards(){
+  const tid=$("#adminTournamentSelect").value,t=tournamentById(tid);
+  const used=new Set(),items=[];
+  for(const card of $$("[data-slot]","#participantCards")){
+    const members=[];
+    for(const block of $$("[data-member]",card)){
+      const idx=block.dataset.member;
+      const kind=block.querySelector(`[data-member-kind="${idx}"]`).value;
+      let member;
+      if(kind==="account"){
+        const id=block.querySelector(`[data-member-account="${idx}"]`).value;
+        const account=state.accounts.find(a=>a.id===id);
+        if(!account)throw new Error(`Selecciona una cuenta en la tarjeta ${+card.dataset.slot+1}.`);
+        if(used.has("a:"+id))throw new Error(`La cuenta ${account.username} está repetida.`);
+        used.add("a:"+id);member={id,name:account.username,type:"account"};
+      }else{
+        const name=block.querySelector(`[data-member-bot="${idx}"]`).value.trim();
+        if(!name)throw new Error(`Escribe el nombre del bot en la tarjeta ${+card.dataset.slot+1}.`);
+        if(used.has("b:"+name.toLowerCase()))throw new Error(`El bot ${name} está repetido.`);
+        used.add("b:"+name.toLowerCase());member={name,type:"bot"};
+      }
+      members.push(member);
+    }
+    const display_name=t.format==="2v2"?members.map(m=>m.name).join(" + "):members[0].name;
+    items.push({display_name,kind:t.format==="2v2"?"team":members[0].type,members,group_no:+card.querySelector("[data-slot-group]").value,seed_elo:participantEloFromMembers(members)});
+  }
+  return items;
+}
+
+$("#saveParticipantsButton").onclick=async()=>{
+  const tid=$("#adminTournamentSelect").value;if(!tid)return;
+  let items;try{items=readParticipantCards()}catch(e){alert(e.message);return}
+  await supabase.from("tournament_participants").delete().eq("tournament_id",tid);
+  const rows=items.map(x=>({...x,tournament_id:tid}));
+  const {error}=await supabase.from("tournament_participants").insert(rows);
+  if(error){alert(error.message);return}
+  await loadAll();$("#adminTournamentSelect").value=tid;renderParticipantCards();
+  alert("Participantes guardados.");
 };
+
+$("#fairPairingButton").onclick=()=>{
+  const cards=$$("[data-slot]","#participantCards");
+  const entries=cards.map(card=>{
+    const names=[];
+    for(const block of $$("[data-member]",card)){
+      const idx=block.dataset.member;
+      const kind=block.querySelector(`[data-member-kind="${idx}"]`).value;
+      if(kind==="account"){
+        const a=state.accounts.find(x=>x.id===block.querySelector(`[data-member-account="${idx}"]`).value);
+        if(a)names.push(a.username);
+      }else{
+        const n=block.querySelector(`[data-member-bot="${idx}"]`).value.trim();if(n)names.push(n);
+      }
+    }
+    const elo=names.length?names.reduce((s,n)=>s+rankingFor(n).elo,0)/names.length:1000;
+    return {card,elo};
+  }).sort((a,b)=>b.elo-a.elo);
+  const groups=tournamentById($("#adminTournamentSelect").value)?.config?.groups||1;
+  let g=1,dir=1;
+  entries.forEach(e=>{
+    e.card.querySelector("[data-slot-group]").value=g;
+    if(groups>1){g+=dir;if(g>groups){g=groups;dir=-1}else if(g<1){g=1;dir=1}}
+  });
+};
+
 $("#generateFixture").onclick=async()=>{
-  const tid=$("#adminTournamentSelect").value,t=state.tournaments.find(x=>x.id===tid),ps=state.participants.filter(p=>p.tournament_id===tid);
-  if(!t||ps.length<2){alert("Faltan participantes.");return}
+  const tid=$("#adminTournamentSelect").value,t=tournamentById(tid),ps=tournamentParticipants(tid);
+  const expectedCount=t?.config?.participant_count||0;
+  if(!t||ps.length!==expectedCount){alert(`Debes guardar exactamente ${expectedCount} participantes antes de generar las peleas.`);return}
+  const groupNumbers=[...new Set(ps.map(p=>p.group_no))];
+  for(const g of groupNumbers)if(ps.filter(p=>p.group_no===g).length<2){alert(`El grupo ${groupLetter(g)} necesita al menos 2 participantes.`);return}
+
   await supabase.from("matches").delete().eq("tournament_id",tid);
   const rows=[];let round=1;
-  const groups=[...new Set(ps.map(p=>p.group_no))];
-  for(const g of groups){
+  for(const g of groupNumbers.sort((a,b)=>a-b)){
     const gp=ps.filter(p=>p.group_no===g);
     for(let i=0;i<gp.length;i++)for(let j=i+1;j<gp.length;j++){
-      rows.push({tournament_id:tid,phase:"group",round_no:round++,group_no:g,side_a:gp[i].id,side_b:gp[j].id});
-      if(t.format==="1v1-double")rows.push({tournament_id:tid,phase:"group",round_no:round++,group_no:g,side_a:gp[j].id,side_b:gp[i].id});
+      rows.push({tournament_id:tid,phase:"group",round_no:round++,group_no:g,side_a:gp[i].id,side_b:gp[j].id,status:"scheduled"});
+      if(t.format==="1v1-double")rows.push({tournament_id:tid,phase:"group",round_no:round++,group_no:g,side_a:gp[j].id,side_b:gp[i].id,status:"scheduled"});
     }
   }
-  const {error}=await supabase.from("matches").insert(rows);if(error){alert(error.message);return}
-  await supabase.from("tournaments").update({status:"active"}).eq("id",tid);await loadAll();$("#adminTournamentSelect").value=tid;renderMatchAdmin();
+  const {error}=await supabase.from("matches").insert(rows);
+  if(error){alert(error.message);return}
+  await supabase.from("tournaments").update({status:"active"}).eq("id",tid);
+  await loadAll();$("#adminTournamentSelect").value=tid;renderMatchAdmin();renderKnockoutPanel();
 };
+
+function localDatetimeValue(value){
+  if(!value)return "";
+  const d=new Date(value),pad=n=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 function renderMatchAdmin(){
-  const tid=$("#adminTournamentSelect").value;
-  const ms=state.matches.filter(m=>m.tournament_id===tid);
-  $("#matchAdminList").innerHTML=ms.map(m=>`<div class="card">
-    <strong>${esc(participantName(m.side_a))} vs ${esc(participantName(m.side_b))}</strong>
-    <div class="muted">${esc(m.phase)} · ronda ${m.round_no}</div>
-    <div class="row"><input type="number" min="0" value="${m.score_a??0}" data-score-a="${m.id}"><input type="number" min="0" value="${m.score_b??0}" data-score-b="${m.id}"><input type="datetime-local" data-schedule="${m.id}" value="${m.scheduled_at?new Date(m.scheduled_at).toISOString().slice(0,16):""}"><button data-save-match="${m.id}">Guardar</button></div>
-  </div>`).join("")||'<div class="muted">Sin partidas.</div>';
-  $$("[data-save-match]").forEach(b=>b.onclick=()=>saveMatch(b.dataset.saveMatch));
+  const tid=$("#adminTournamentSelect").value;if(!tid)return;
+  const ms=tournamentMatches(tid);
+  const phases=["group","repechage","quarterfinal","semifinal","final","third_place"];
+  $("#matchAdminList").innerHTML=phases.map(phase=>{
+    const list=ms.filter(m=>m.phase===phase);if(!list.length)return "";
+    const title={group:"Fase de grupos",repechage:"Repechaje",quarterfinal:"Cuartos de final",semifinal:"Semifinales",final:"Final",third_place:"Tercer puesto"}[phase];
+    return `<div class="phase-title">${title}</div>${list.map(matchCardAdmin).join("")}`;
+  }).join("")||'<div class="muted">Todavía no se generaron peleas.</div>';
+
+  $$("[data-start-match]").forEach(b=>b.onclick=()=>startMatch(b.dataset.startMatch));
+  $$("[data-finish-match]").forEach(b=>b.onclick=()=>finishMatch(b.dataset.finishMatch,false));
+  $$("[data-walkover-a]").forEach(b=>b.onclick=()=>finishMatch(b.dataset.walkoverA,true,"a"));
+  $$("[data-walkover-b]").forEach(b=>b.onclick=()=>finishMatch(b.dataset.walkoverB,true,"b"));
+  $$("[data-save-schedule]").forEach(b=>b.onclick=()=>saveSchedule(b.dataset.saveSchedule));
 }
-async function saveMatch(id){
-  const m=state.matches.find(x=>x.id===id),a=+document.querySelector(`[data-score-a="${id}"]`).value,b=+document.querySelector(`[data-score-b="${id}"]`).value,s=document.querySelector(`[data-schedule="${id}"]`).value;
-  const finished=a!==b&&(a>0||b>0),winner=finished?(a>b?m.side_a:m.side_b):null;
-  await supabase.from("matches").update({score_a:a,score_b:b,scheduled_at:s?new Date(s).toISOString():null,status:finished?"finished":"scheduled",winner_id:winner}).eq("id",id);
-  if(finished)await updateRankingAfterMatch(m,a,b,winner);await settleBets(id);await loadAll();$("#adminTournamentSelect").value=m.tournament_id;renderMatchAdmin();
+function matchCardAdmin(m){
+  const started=m.status==="live",done=["finished","walkover"].includes(m.status);
+  return `<div class="card fight-card">
+    <div class="fight-header">
+      <span class="pill">${m.phase==="group"?`Grupo ${groupLetter(m.group_no)}`:esc(m.phase)}</span>
+      <div class="row" style="flex:0 1 420px">
+        <input type="datetime-local" data-match-date="${m.id}" value="${localDatetimeValue(m.scheduled_at)}">
+        <button class="secondary" data-save-schedule="${m.id}">Guardar fecha</button>
+      </div>
+    </div>
+    <div class="fight-vs">
+      <span>${esc(participantName(m.side_a))}</span><span class="vs">VS</span><span>${esc(participantName(m.side_b))}</span>
+    </div>
+    <div class="fight-controls">
+      ${done?`<div class="card"><strong>Resultado: ${m.score_a??0} - ${m.score_b??0}</strong> · ${m.status==="walkover"?"Walkover":"Finalizada"}</div>`:
+      started?`<div class="score-box">
+        <input type="number" min="0" value="${m.score_a??0}" data-score-a="${m.id}">
+        <span>—</span>
+        <input type="number" min="0" value="${m.score_b??0}" data-score-b="${m.id}">
+        <button data-finish-match="${m.id}">Finalizar pelea</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="danger" data-walkover-a="${m.id}">WO para ${esc(participantName(m.side_a))}</button>
+        <button class="danger" data-walkover-b="${m.id}">WO para ${esc(participantName(m.side_b))}</button>
+      </div>`:
+      `<button data-start-match="${m.id}" style="width:100%">Iniciar pelea</button>`}
+    </div>
+  </div>`;
 }
-async function updateRankingAfterMatch(m,a,b,winner){
-  const pa=state.participants.find(p=>p.id===m.side_a),pb=state.participants.find(p=>p.id===m.side_b);
-  for(const [p,won,kf,ka,opp] of [[pa,winner===m.side_a,a,b,pb],[pb,winner===m.side_b,b,a,pa]]){
-    const old=rankingFor(p.display_name),oppR=rankingFor(opp.display_name),delta=Math.round(32*((won?1:0)-expected(old.elo,oppR.elo)));
-    await supabase.from("rankings").upsert({name:p.display_name,elo:old.elo+delta,wins:old.wins+(won?1:0),losses:old.losses+(won?0:1),kos_for:old.kos_for+kf,kos_against:old.kos_against+ka});
+async function saveSchedule(id){
+  const value=document.querySelector(`[data-match-date="${id}"]`).value;
+  const {error}=await supabase.from("matches").update({scheduled_at:value?new Date(value).toISOString():null}).eq("id",id);
+  if(error)alert(error.message);else alert("Fecha y hora guardadas.");
+}
+async function startMatch(id){
+  await supabase.from("matches").update({status:"live"}).eq("id",id);
+  await loadAll();renderMatchAdmin();
+}
+async function finishMatch(id,walkover=false,side=null){
+  const m=state.matches.find(x=>x.id===id);if(!m)return;
+  let a=0,b=0,winner=null,status="finished";
+  if(walkover){
+    status="walkover";winner=side==="a"?m.side_a:m.side_b;a=side==="a"?1:0;b=side==="b"?1:0;
+  }else{
+    a=+document.querySelector(`[data-score-a="${id}"]`).value;
+    b=+document.querySelector(`[data-score-b="${id}"]`).value;
+    if(a===b){alert("El marcador no puede terminar empatado.");return}
+    winner=a>b?m.side_a:m.side_b;
   }
+  await supabase.from("matches").update({score_a:a,score_b:b,status,winner_id:winner}).eq("id",id);
+  await updateRankingAfterMatch(m,a,b,winner);
+  await settleBets(id);
+  await loadAll();$("#adminTournamentSelect").value=m.tournament_id;renderMatchAdmin();
+  if(m.phase==="group") await autoGenerateKnockout(m.tournament_id);
+  else await advanceKnockout(m.tournament_id,m.phase);
 }
-async function settleBets(matchId){
-  const m=(await supabase.from("matches").select("*").eq("id",matchId).single()).data;
-  const bets=(await supabase.from("bets").select("*").eq("match_id",matchId).eq("status","pending")).data||[];
-  for(const b of bets){
-    let won=false;
-    if(b.bet_type==="winner")won=b.selection.participant_id===m.winner_id;
-    if(b.bet_type==="score")won=+b.selection.score_a===m.score_a&&+b.selection.score_b===m.score_b;
-    if(b.bet_type==="handicap"){
-      const selected=b.selection.participant_id,line=+b.selection.line;
-      const diff=selected===m.side_a?(m.score_a+line-m.score_b):(m.score_b+line-m.score_a);won=diff>0;
-    }
-    const payout=won?Math.floor(b.stake*Number(b.locked_odds)):0;
-    await supabase.from("bets").update({status:won?"won":"lost",payout}).eq("id",b.id);
-    if(won){const acc=state.accounts.find(a=>a.id===b.account_id);if(acc)await supabase.from("accounts").update({credits:acc.credits+payout}).eq("id",acc.id)}
-  }
+
+async function autoGenerateKnockout(tid){
+  const t=tournamentById(tid);
+  if(!t||!isGroupStageComplete(tid))return;
+  const mainExisting=tournamentMatches(tid).some(m=>["quarterfinal","semifinal","final"].includes(m.phase));
+  if(mainExisting){renderKnockoutPanel();return}
+  await generateKnockoutRows(tid);
 }
-$("#generateBracket").onclick=async()=>{
-  const tid=$("#adminTournamentSelect").value,t=state.tournaments.find(x=>x.id===tid);
-  const groupMatches=state.matches.filter(m=>m.tournament_id===tid&&m.phase==="group");
-  const pending=groupMatches.filter(m=>m.status!=="finished"&&m.status!=="walkover");
-  if(pending.length){$("#bracketStatus").textContent=`Faltan ${pending.length} partidas de grupos.`;return}
-  const q=t.config.qualify_per_group||2,groups=[...new Set(state.participants.filter(p=>p.tournament_id===tid).map(p=>p.group_no))];
+async function generateKnockoutRows(tid){
+  const t=tournamentById(tid),q=t.config?.qualify_per_group||1;
+  const groups=[...new Set(tournamentParticipants(tid).map(p=>p.group_no))].sort((a,b)=>a-b);
+  const table=standingsFor(tid);
   const qualifiers=[];
-  for(const g of groups)qualifiers.push(...standingsFor(tid).filter(x=>x.group_no===g).slice(0,q));
-  if(![2,4,8,16].includes(qualifiers.length)){alert("La cantidad total de clasificados debe ser 2, 4, 8 o 16.");return}
-  const rows=[];let phase=qualifiers.length===2?"final":qualifiers.length===4?"semifinal":"quarterfinal";
-  for(let i=0;i<qualifiers.length;i+=2)rows.push({tournament_id:tid,phase,round_no:1,side_a:qualifiers[i].id,side_b:qualifiers[i+1].id});
-  await supabase.from("matches").insert(rows);$("#bracketStatus").textContent="Eliminatorias generadas.";await loadAll();$("#adminTournamentSelect").value=tid;renderMatchAdmin();
+  for(const g of groups)qualifiers.push(...table.filter(x=>x.group_no===g).slice(0,q));
+
+  const repechage=t.config?.repechage ?? $("#enableRepechage").checked;
+  const third=t.config?.third_place ?? $("#enableThirdPlace").checked;
+  let rep=tournamentMatches(tid).find(m=>m.phase==="repechage");
+
+  if(repechage && !rep){
+    const extras=groups.map(g=>table.filter(x=>x.group_no===g)[q]).filter(Boolean);
+    if(extras.length>=2){
+      const {data,error}=await supabase.from("matches").insert({
+        tournament_id:tid,phase:"repechage",round_no:1,
+        side_a:extras[0].id,side_b:extras[1].id,status:"scheduled"
+      }).select().single();
+      if(error){alert(error.message);return}
+      rep=data;
+      $("#bracketStatus").textContent="Repechaje creado. Al finalizarlo se crearán las eliminatorias.";
+      await loadAll();$("#adminTournamentSelect").value=tid;renderMatchAdmin();renderKnockoutPanel();
+      return;
+    }
+  }
+
+  if(rep && !["finished","walkover"].includes(rep.status)){
+    $("#bracketStatus").textContent="Falta finalizar el repechaje.";
+    return;
+  }
+  if(rep?.winner_id)qualifiers.push(state.participants.find(p=>p.id===rep.winner_id));
+
+  if(![2,4,8,16].includes(qualifiers.length)){
+    $("#bracketStatus").textContent=`Hay ${qualifiers.length} clasificados. Deben ser 2, 4, 8 o 16.`;
+    return;
+  }
+
+  const phase=qualifiers.length===2?"final":qualifiers.length===4?"semifinal":"quarterfinal";
+  const rows=[];
+  for(let i=0;i<qualifiers.length;i+=2){
+    rows.push({tournament_id:tid,phase,round_no:1,side_a:qualifiers[i].id,side_b:qualifiers[i+1].id,status:"scheduled"});
+  }
+  const {error}=await supabase.from("matches").insert(rows);
+  if(error){alert(error.message);return}
+  await supabase.from("tournaments").update({config:{...t.config,repechage,third_place:third}}).eq("id",tid);
+  await loadAll();$("#adminTournamentSelect").value=tid;renderMatchAdmin();renderKnockoutPanel();
+}
+async function advanceKnockout(tid,finishedPhase){
+  const t=tournamentById(tid);if(!t)return;
+
+  if(finishedPhase==="repechage"){
+    await generateKnockoutRows(tid);
+    return;
+  }
+
+  if(finishedPhase==="quarterfinal"){
+    const matches=tournamentMatches(tid).filter(m=>m.phase==="quarterfinal");
+    if(matches.length&&matches.every(m=>["finished","walkover"].includes(m.status)) &&
+       !tournamentMatches(tid).some(m=>m.phase==="semifinal")){
+      const winners=matches.map(m=>m.winner_id);
+      const rows=[];
+      for(let i=0;i<winners.length;i+=2)rows.push({tournament_id:tid,phase:"semifinal",round_no:1,side_a:winners[i],side_b:winners[i+1],status:"scheduled"});
+      await supabase.from("matches").insert(rows);
+    }
+  }
+
+  if(finishedPhase==="semifinal"){
+    const semis=tournamentMatches(tid).filter(m=>m.phase==="semifinal");
+    if(semis.length===2&&semis.every(m=>["finished","walkover"].includes(m.status)) &&
+       !tournamentMatches(tid).some(m=>m.phase==="final")){
+      const winners=semis.map(m=>m.winner_id);
+      const losers=semis.map(m=>m.side_a===m.winner_id?m.side_b:m.side_a);
+      const rows=[{tournament_id:tid,phase:"final",round_no:1,side_a:winners[0],side_b:winners[1],status:"scheduled"}];
+      if(t.config?.third_place!==false)rows.push({tournament_id:tid,phase:"third_place",round_no:1,side_a:losers[0],side_b:losers[1],status:"scheduled"});
+      await supabase.from("matches").insert(rows);
+    }
+  }
+
+  if(finishedPhase==="final"){
+    await supabase.from("tournaments").update({status:"finished"}).eq("id",tid);
+  }
+  await loadAll();$("#adminTournamentSelect").value=tid;renderMatchAdmin();renderKnockoutPanel();
+}
+function renderKnockoutPanel(){
+  const tid=$("#adminTournamentSelect").value,t=tournamentById(tid);if(!t)return;
+  $("#enableRepechage").checked=!!t.config?.repechage;
+  $("#enableThirdPlace").checked=t.config?.third_place!==false;
+  const done=isGroupStageComplete(tid);
+  $("#bracketStatus").textContent=done?"La fase de grupos terminó. Las eliminatorias se generan automáticamente.":"Las eliminatorias aparecerán al finalizar todas las peleas de grupos.";
+  const ms=tournamentMatches(tid).filter(m=>m.phase!=="group");
+  $("#knockoutBracket").innerHTML=ms.map(m=>`<div class="card knockout-card">
+    <span class="pill">${esc(m.phase)}</span>
+    <div class="teams" style="margin-top:10px"><span>${esc(participantName(m.side_a))}</span><span>VS</span><span>${esc(participantName(m.side_b))}</span></div>
+    <div class="muted">${m.scheduled_at?new Date(m.scheduled_at).toLocaleString("es-BO"):"Sin horario"} · ${esc(m.status)}</div>
+  </div>`).join("")||'<div class="muted">Aún no hay cruces eliminatorios.</div>';
+}
+$("#enableRepechage").onchange=async()=>{
+  const tid=$("#adminTournamentSelect").value,t=tournamentById(tid);if(!t)return;
+  await supabase.from("tournaments").update({config:{...t.config,repechage:$("#enableRepechage").checked}}).eq("id",tid);
+  await loadAll();$("#adminTournamentSelect").value=tid;renderKnockoutPanel();
+  if(isGroupStageComplete(tid))await autoGenerateKnockout(tid);
+};
+$("#enableThirdPlace").onchange=async()=>{
+  const tid=$("#adminTournamentSelect").value,t=tournamentById(tid);if(!t)return;
+  await supabase.from("tournaments").update({config:{...t.config,third_place:$("#enableThirdPlace").checked}}).eq("id",tid);
+  await loadAll();$("#adminTournamentSelect").value=tid;renderKnockoutPanel();
 };
 
 const dailyPrizes=[

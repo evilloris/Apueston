@@ -57,6 +57,11 @@
     <div class="panel">
       <h2>Seleccionar torneo</h2>
       <select id="betTournamentSelect"></select>
+      <div id="betTournamentStandings" class="group-standings"></div>
+    </div>
+    <div class="panel">
+      <h2>Tabla de posiciones</h2>
+      <div id="betStandings"></div>
     </div>
     <div class="panel">
       <h2>Enfrentamientos abiertos</h2>
@@ -123,37 +128,47 @@
 
   <section id="view-tournaments" class="view admin-only">
     <div class="panel">
-      <h2>Crear torneo</h2>
+      <h2>1. Crear torneo</h2>
       <div class="grid">
-        <div><label>Nombre</label><input id="tournamentName"></div>
-        <div><label>Formato</label><select id="tournamentFormat"><option value="1v1">1 vs 1</option><option value="2v2">2 vs 2</option><option value="1v1-double">1 vs 1 doble</option></select></div>
-        <div><label>Grupos</label><input id="tournamentGroups" type="number" min="1" value="2"></div>
+        <div><label>Nombre del torneo</label><input id="tournamentName" placeholder="Ej: Copa Poképachanga"></div>
+        <div><label>Modalidad</label><select id="tournamentFormat"><option value="1v1">1 vs 1</option><option value="2v2">2 vs 2</option><option value="1v1-double">1 vs 1 doble</option></select></div>
+        <div><label>Cantidad de participantes/equipos</label><input id="tournamentParticipantCount" type="number" min="2" max="32" value="8"></div>
+        <div><label>Cantidad de grupos</label><input id="tournamentGroups" type="number" min="1" max="26" value="2"></div>
         <div><label>Clasifican por grupo</label><input id="qualifyPerGroup" type="number" min="1" value="2"></div>
       </div>
-      <button id="createTournament" style="margin-top:12px">Crear torneo</button>
+      <button id="createTournament" style="margin-top:12px">Crear torneo y generar tarjetas</button>
     </div>
+
     <div class="panel">
       <h2>Torneos</h2>
       <div id="tournamentAdminList" class="grid"></div>
     </div>
+
     <div class="panel" id="participantPanel" hidden>
-      <h2>Participantes</h2>
+      <h2>2. Asignar jugadores y grupos</h2>
       <div class="row">
-        <div><label>Torneo</label><select id="adminTournamentSelect"></select></div>
-        <div><label>Tipo</label><select id="participantKind"><option value="account">Cuenta</option><option value="bot">Bot</option><option value="team">Equipo 2v2</option></select></div>
-        <div><label>Cuenta / nombre</label><select id="participantAccount"></select><input id="participantBot" hidden placeholder="Nombre del bot"></div>
-        <div id="teamSecondWrap" hidden><label>Segundo integrante</label><select id="participantSecondAccount"></select></div>
-        <div><label>Grupo</label><input id="participantGroup" type="number" min="1" value="1"></div>
-        <button id="addParticipant">Agregar</button>
+        <div><label>Torneo seleccionado</label><select id="adminTournamentSelect"></select></div>
+        <button id="fairPairingButton" class="secondary">⚖️ Emparejamiento justo por ELO</button>
+        <button id="saveParticipantsButton">Guardar participantes</button>
       </div>
-      <div id="participantList" style="margin-top:14px"></div>
-      <button id="generateFixture" style="margin-top:12px">Generar fase de grupos</button>
+      <p class="muted">Selecciona una cuenta o un bot en cada tarjeta. En 2v2 se eligen dos integrantes por equipo.</p>
+      <div id="participantCards" class="grid" style="margin-top:14px"></div>
+      <button id="generateFixture" style="margin-top:12px">Generar peleas de grupos</button>
     </div>
+
     <div class="panel" id="matchAdminPanel" hidden>
-      <h2>Partidas y eliminatorias</h2>
+      <h2>3. Peleas del torneo</h2>
       <div id="matchAdminList"></div>
-      <button id="generateBracket" style="margin-top:12px">Generar eliminatorias</button>
-      <div id="bracketStatus" class="muted" style="margin-top:8px"></div>
+    </div>
+
+    <div class="panel" id="knockoutPanel" hidden>
+      <h2>4. Eliminatorias</h2>
+      <div class="row">
+        <label class="card"><input id="enableRepechage" type="checkbox"> Activar repechaje</label>
+        <label class="card"><input id="enableThirdPlace" type="checkbox" checked> Batalla por el 3.er puesto</label>
+      </div>
+      <div id="bracketStatus" class="muted" style="margin-top:10px"></div>
+      <div id="knockoutBracket" class="grid" style="margin-top:14px"></div>
     </div>
   </section>
 </main>

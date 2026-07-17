@@ -91,7 +91,7 @@ function renderAll(){
   $("#loginButton").hidden=!!state.account; $("#logoutButton").hidden=!state.account;
   renderLeaderboard(); renderActiveEvents(); renderTournamentSelects(); renderBetMatches(); renderBetTournamentStandings(); renderBetStandings();
   renderMyBets(); renderGeneralStats(); renderResults(); renderAccountsAdmin();
-  renderCreditsAdmin(); renderTournamentsAdmin(); renderRewards(); updateDailyButton();
+  renderCreditsAdmin(); renderTournamentsAdmin(); renderRewards(); renderWeeklyDailyPrizes(); updateDailyButton();
 }
 function switchView(view){
   const target=$(`#view-${view}`);
@@ -1231,9 +1231,9 @@ $('#spinPaidButton').onclick=async()=>{
   finally{$('#spinPaidButton').disabled=false;$('#spinPaidTenButton').disabled=false}
 };
 $('#spinPaidTenButton').onclick=async()=>{
-  if(!state.account||state.account.credits<1000){alert('Necesitas 1.000 créditos.');return}
+  if(!state.account||state.account.credits<900){alert('Necesitas 900 créditos.');return}
   $('#spinPaidTenButton').disabled=true;
-  await supabase.from('accounts').update({credits:state.account.credits-1000}).eq('id',state.account.id);
+  await supabase.from('accounts').update({credits:state.account.credits-900}).eq('id',state.account.id);
   const rewards=Array.from({length:10},()=>createPaidPokemonPrize());
   await supabase.from('rewards').insert(rewards.map(prize=>({account_id:state.account.id,source:'Ruleta Pokémon x10',label:prize.rewardLabel})));
   $('#paidResult').innerHTML='<strong>10 resultados:</strong><br>'+rewards.map((prize,index)=>`${index+1}. ${esc(prize.rewardLabel)}`).join('<br>');

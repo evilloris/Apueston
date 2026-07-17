@@ -66,6 +66,7 @@
     <div class="panel">
       <h2>Enfrentamientos abiertos</h2>
       <div id="betMatches" class="grid"></div>
+      <div id="parlayBuilder" class="parlay-builder" hidden></div>
     </div>
     <div class="panel">
       <h2>Mis apuestas</h2>
@@ -91,6 +92,7 @@
       <h2>Ruleta diaria</h2>
       <p class="muted">Un giro gratuito por día. Tiene 7 premios y se renueva cada domingo; siempre incluye un Pokémon casi imposible.</p>
       <div class="wheel-wrap"><div id="dailyWheel" class="wheel"></div><div class="wheel-center">DIARIA</div></div>
+      <div id="dailyPrizeList" class="daily-prize-list"></div>
       <button id="spinDailyButton" style="width:100%;margin-top:16px">Girar una vez al día</button>
       <div id="dailyResult" class="card" style="margin-top:12px">Sin girar.</div>
     </div>
@@ -211,10 +213,10 @@
     <div id="betDynamicFields" style="margin-top:12px"></div>
     <div style="margin-top:12px"><label>Monto</label><input id="betStake" type="number" min="1" value="50"></div>
     <div id="betOddsPreview" class="card" style="margin-top:12px"></div>
-    <div class="row" style="margin-top:14px"><button id="confirmBet">Confirmar</button><button class="secondary" data-close-modal>Cerrar</button></div>
+    <div class="row" style="margin-top:14px"><button id="confirmBet">Confirmar apuesta</button><button id="addToParlay" class="secondary">Agregar a combinada</button><button class="secondary" data-close-modal>Cerrar</button></div>
   </div>
 </div>
 
-<script type="module" src="./app.js?v=15"></script>
+<script type="module" src="./app.js?v=16"></script>
 </body>
 </html>

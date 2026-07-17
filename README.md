@@ -26,3 +26,9 @@ Ejecuta `reset_data.sql` en Supabase.
 ## Seguridad
 
 Esta versión está pensada para una liga privada entre amigos. Usa una publishable key y políticas públicas para funcionar directamente desde GitHub Pages, sin servidor propio. No la uses para apuestas con dinero real ni contraseñas reutilizadas.
+
+## Versión 16
+- La ruleta diaria muestra dentro del círculo los nombres de sus 7 premios semanales y una lista legible debajo.
+- Se añadió un constructor de apuestas combinadas con ganador, hándicap y marcador exacto.
+- Las selecciones conservan la cuota del momento en que se agregan; la cuota final se multiplica y queda bloqueada al confirmar.
+- Las combinadas se resuelven automáticamente cuando terminan sus selecciones.

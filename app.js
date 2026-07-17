@@ -15,6 +15,7 @@ let state = {
 };
 let pendingPaidReward = null;
 let wheelRotation = 0;
+let parlayCart = [];
 
 async function sha256(text){
   const bytes = new TextEncoder().encode(text);
@@ -274,13 +275,58 @@ function updateBetPreview(){
   $("#betOddsPreview").textContent=`Cuota x${odds} · pago potencial ${money(Math.floor(stake*odds))}`;
 }
 $("#betStake").oninput=updateBetPreview;
+function currentBetSelection(){
+  const type=$('#betType').value;
+  if(type==='score')return {score_a:+$('#scoreA').value,score_b:+$('#scoreB').value};
+  if(type==='handicap'){const [participant_id,line]=$('#betSelection').value.split('|');return {participant_id,line:+line}}
+  return {participant_id:$('#betSelection').value};
+}
+function renderParlayBuilder(){
+  const box=$('#parlayBuilder');
+  if(!box)return;
+  box.hidden=parlayCart.length===0;
+  if(!parlayCart.length){box.innerHTML='';return}
+  const totalOdds=parlayCart.reduce((value,leg)=>value*Number(leg.locked_odds),1);
+  box.innerHTML=`<h3>Combinada (${parlayCart.length} selecciones)</h3>
+    ${parlayCart.map((leg,index)=>`<div class="parlay-leg"><div><strong>${esc(leg.match_label)}</strong><small>${esc(leg.selection_label)} · cuota x${Number(leg.locked_odds).toFixed(3)}</small></div><button class="danger parlay-remove" data-remove-parlay="${index}">Quitar</button></div>`).join('')}
+    <div class="parlay-summary"><div class="card"><span class="muted">Cuota combinada</span><strong style="display:block">x${totalOdds.toFixed(3)}</strong></div><div class="card"><span class="muted">Pago potencial</span><strong id="parlayPotential" style="display:block">0 créditos</strong></div></div>
+    <div class="parlay-actions"><div><label>Monto de la combinada</label><input id="parlayStake" type="number" min="1" value="50"></div><button id="confirmParlay">Confirmar combinada</button><button id="clearParlay" class="secondary">Vaciar</button></div>`;
+  const update=()=>{$('#parlayPotential').textContent=money(Math.floor((+$('#parlayStake').value||0)*totalOdds))+' créditos'};
+  $('#parlayStake').oninput=update;update();
+  $$('[data-remove-parlay]',box).forEach(btn=>btn.onclick=()=>{parlayCart.splice(+btn.dataset.removeParlay,1);renderParlayBuilder()});
+  $('#clearParlay').onclick=()=>{parlayCart=[];renderParlayBuilder()};
+  $('#confirmParlay').onclick=placeParlay;
+}
+$('#addToParlay').onclick=()=>{
+  const match=state.matches.find(x=>x.id===$('#betMatchId').value);if(!match)return;
+  const type=$('#betType').value,selection=currentBetSelection(),odds=Number(currentBetOdds());
+  const duplicate=parlayCart.some(leg=>leg.match_id===match.id&&leg.bet_type===type&&JSON.stringify(leg.selection)===JSON.stringify(selection));
+  if(duplicate){alert('Esa selección ya está en la combinada.');return}
+  parlayCart.push({match_id:match.id,bet_type:type,selection,locked_odds:odds,match_label:`${participantName(match.side_a)} vs ${participantName(match.side_b)}`,selection_label:describeBetSelection(type,selection,match)});
+  modal('#betModal',false);renderParlayBuilder();
+};
+async function placeParlay(){
+  if(!state.account||!parlayCart.length)return;
+  const stake=+$('#parlayStake').value;
+  if(!stake||stake<1||stake>state.account.credits){alert('Monto inválido.');return}
+  const lockedOdds=Number(parlayCart.reduce((value,leg)=>value*Number(leg.locked_odds),1).toFixed(4));
+  const tournamentIds=[...new Set(parlayCart.map(leg=>state.matches.find(m=>m.id===leg.match_id)?.tournament_id).filter(Boolean))];
+  const betRow={account_id:state.account.id,tournament_id:tournamentIds.length===1?tournamentIds[0]:null,match_id:null,bet_type:'parlay',selection:{legs:parlayCart.map(leg=>({...leg}))},stake,locked_odds:lockedOdds};
+  const newCredits=state.account.credits-stake;
+  const [u,b]=await Promise.all([
+    supabase.from('accounts').update({credits:newCredits}).eq('id',state.account.id),
+    supabase.from('bets').insert(betRow).select('*').single()
+  ]);
+  if(u.error||b.error){alert('No se pudo guardar la combinada.');console.error(u.error||b.error);return}
+  state.account.credits=newCredits;
+  const accountIndex=state.accounts.findIndex(a=>a.id===state.account.id);if(accountIndex>=0)state.accounts[accountIndex].credits=newCredits;
+  state.bets.unshift(b.data||{...betRow,id:`local-${Date.now()}`,status:'pending',created_at:new Date().toISOString()});
+  parlayCart=[];renderParlayBuilder();renderMyBets();renderAll();loadAll();
+}
 $("#confirmBet").onclick=async()=>{
   const match=state.matches.find(x=>x.id===$("#betMatchId").value),type=$("#betType").value,stake=+$("#betStake").value;
   if(!match||!stake||stake<1||stake>state.account.credits){alert("Monto inválido.");return}
-  let selection;
-  if(type==="score")selection={score_a:+$("#scoreA").value,score_b:+$("#scoreB").value};
-  else if(type==="handicap"){const [participant_id,line]=$("#betSelection").value.split("|");selection={participant_id,line:+line}}
-  else selection={participant_id:$("#betSelection").value};
+  const selection=currentBetSelection();
   const odds=currentBetOdds();
   const {error}=await supabase.rpc("place_bet_atomic",{});
   if(error && !String(error.message).includes("Could not find")) console.warn(error);
@@ -314,11 +360,28 @@ function betStatusInfo(status){
 function betTypeLabel(type){
   return ({winner:'Ganador',handicap:'Hándicap',score:'Marcador exacto',parlay:'Combinada',champion:'Campeón'})[type]||type;
 }
+function describeBetSelection(type,selection,match){
+  if(!match)return 'Enfrentamiento no disponible';
+  const a=participantName(match.side_a),b=participantName(match.side_b);
+  if(type==='winner')return `Ganador: ${participantName(selection?.participant_id)}`;
+  if(type==='handicap')return `Hándicap: ${participantName(selection?.participant_id)} ${Number(selection?.line)>=0?'+':''}${selection?.line}`;
+  if(type==='score')return `Marcador exacto: ${a} ${selection?.score_a} - ${selection?.score_b} ${b}`;
+  return '';
+}
+function parlayDetail(bet){
+  const legs=bet.selection?.legs||[];
+  return legs.map(leg=>{
+    const match=state.matches.find(m=>m.id===leg.match_id);
+    const title=match?`${participantName(match.side_a)} vs ${participantName(match.side_b)}`:'Partido';
+    return `${title}: ${describeBetSelection(leg.bet_type,leg.selection,match)} (x${Number(leg.locked_odds).toFixed(3)})`;
+  }).join(' · ');
+}
 function renderMyBets(){
   if(!state.account){$("#myBets").innerHTML='<div class="muted">Inicia sesión.</div>';return}
   const rows=state.bets.filter(b=>b.account_id===state.account.id).map(b=>{
     const info=betStatusInfo(b.status);
-    return `<tr class="${info.className}"><td>${esc(betTypeLabel(b.bet_type))}</td><td>${money(b.stake)}</td><td>x${Number(b.locked_odds).toFixed(3)}</td><td><span class="bet-status ${info.className}">${esc(info.label)}</span></td><td>${money(b.payout||0)}</td></tr>`;
+    const detail=b.bet_type==='parlay'?`<div class="bet-detail">${esc(parlayDetail(b))}</div>`:'';
+    return `<tr class="${info.className}"><td>${esc(betTypeLabel(b.bet_type))}${detail}</td><td>${money(b.stake)}</td><td>x${Number(b.locked_odds).toFixed(3)}</td><td><span class="bet-status ${info.className}">${esc(info.label)}</span></td><td>${money(b.payout||0)}</td></tr>`;
   }).join("");
   $("#myBets").innerHTML=`<table><thead><tr><th>Tipo</th><th>Monto</th><th>Cuota</th><th>Estado</th><th>Pago</th></tr></thead><tbody>${rows||'<tr><td colspan="5">Sin apuestas.</td></tr>'}</tbody></table>`;
 }
@@ -725,6 +788,32 @@ async function updateRankingAfterMatch(match,scoreA,scoreB,winnerId){
   state.rankings.sort((a,b)=>b.elo-a.elo);
   renderGeneralStats();renderBetMatches();
 }
+function legResult(leg){
+  const match=state.matches.find(m=>m.id===leg.match_id);
+  if(!match||!["finished","walkover"].includes(match.status))return null;
+  if(leg.bet_type==='winner')return leg.selection?.participant_id===match.winner_id;
+  if(leg.bet_type==='score')return Number(leg.selection?.score_a)===Number(match.score_a)&&Number(leg.selection?.score_b)===Number(match.score_b);
+  if(leg.bet_type==='handicap'){
+    const selected=leg.selection?.participant_id,line=Number(leg.selection?.line||0);
+    const selectedScore=selected===match.side_a?Number(match.score_a):Number(match.score_b);
+    const otherScore=selected===match.side_a?Number(match.score_b):Number(match.score_a);
+    return selectedScore+line>otherScore;
+  }
+  return false;
+}
+async function settleParlays(){
+  const parlays=state.bets.filter(b=>b.bet_type==='parlay'&&b.status==='pending');
+  for(const bet of parlays){
+    const results=(bet.selection?.legs||[]).map(legResult);
+    if(!results.length)continue;
+    const lost=results.some(result=>result===false),complete=results.every(result=>result!==null);
+    if(!lost&&!complete)continue;
+    const won=!lost&&complete,payout=won?Math.floor(Number(bet.stake)*Number(bet.locked_odds)):0;
+    await supabase.from('bets').update({status:won?'won':'lost',payout}).eq('id',bet.id);
+    bet.status=won?'won':'lost';bet.payout=payout;
+    if(won){const account=state.accounts.find(a=>a.id===bet.account_id);if(account){account.credits+=payout;await supabase.from('accounts').update({credits:account.credits}).eq('id',account.id)}}
+  }
+}
 async function settleBets(matchId){
   const match=state.matches.find(m=>m.id===matchId);if(!match)return;
   const bets=state.bets.filter(b=>b.match_id===matchId&&b.status==='pending');
@@ -746,6 +835,7 @@ async function settleBets(matchId){
       if(account){account.credits+=payout;await supabase.from('accounts').update({credits:account.credits}).eq('id',account.id)}
     }
   }
+  await settleParlays();
   renderMyBets();renderLeaderboard();
 }
 
@@ -986,7 +1076,12 @@ const paidCategories=[
 ];
 function weightedPick(items){let r=Math.random()*items.reduce((sum,item)=>sum+item.weight,0);for(const item of items){r-=item.weight;if(r<=0)return item}return items[items.length-1]}
 function createPaidPokemonPrize(){const category=weightedPick(paidCategories);return createPaidPokemonPrizeForCategory(category.key)}
-function drawWheel(el,items){const colors=['#ef476f','#4d8dff','#33d17a','#ad7cff','#f5bd16','#ff8c42','#00a6a6'];const step=360/items.length;el.style.background=`conic-gradient(${items.map((item,index)=>`${colors[index%colors.length]} ${index*step}deg ${(index+1)*step}deg`).join(',')})`}
+function drawWheel(el,items){
+  const colors=['#ef476f','#4d8dff','#33d17a','#ad7cff','#f5bd16','#ff8c42','#00a6a6'],step=360/items.length;
+  el.style.background=`conic-gradient(${items.map((item,index)=>`${colors[index%colors.length]} ${index*step}deg ${(index+1)*step}deg`).join(',')})`;
+  el.innerHTML=items.map((item,index)=>`<div class="daily-wheel-label" style="transform:rotate(${index*step+step/2}deg)"><span>${esc(item.label)}</span></div>`).join('');
+  const list=$('#dailyPrizeList');if(list)list.innerHTML=items.map((item,index)=>`<div class="daily-prize-chip"><strong>${index+1}.</strong> ${esc(item.label)}</div>`).join('');
+}
 drawWheel($('#dailyWheel'),dailyPrizes);
 async function spinVisual(el,items,forcedPick=null){const pick=forcedPick||weightedPick(items),idx=items.indexOf(pick),step=360/items.length;wheelRotation+=1440+(360-(idx*step+step/2));el.style.transform=`rotate(${wheelRotation}deg)`;await new Promise(resolve=>setTimeout(resolve,4300));return pick}
 async function updateDailyButton(){

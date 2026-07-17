@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#090d14">
   <title>Liga Pokémon · Poképachanga</title>
-  <link rel="stylesheet" href="./styles.css?v=9">
+  <link rel="stylesheet" href="./styles.css?v=10">
 </head>
 <body>
 <header>
@@ -39,7 +39,7 @@
     <button data-view="wheel">🎡 Ruletas</button>
     <button data-view="accounts" class="admin-only">👥 Cuentas</button>
     <button data-view="credits" class="admin-only">💳 Créditos</button>
-    <button data-view="events" class="admin-only">🎟️ Eventos</button>
+    <button data-view="tournaments" class="admin-only">🏆 Torneos</button>
   </nav>
 
   <section id="view-home" class="view active">
@@ -75,10 +75,7 @@
 
   <section id="view-results" class="view">
     <div class="panel">
-      <div class="section-heading">
-        <h2>Estadísticas generales</h2>
-        <button id="resetAllRankings" class="danger admin-only">Reiniciar todas las estadísticas</button>
-      </div>
+      <h2>Estadísticas generales</h2>
       <div id="generalStats"></div>
     </div>
     <div class="panel">
@@ -92,23 +89,17 @@
   <section id="view-wheel" class="view">
     <div class="panel">
       <h2>Ruleta diaria</h2>
-      <p class="muted">Un giro gratuito por cuenta cada día. La ruleta tiene 7 premios y se renueva cada domingo. Siempre incluye un Pokémon casi imposible: legendario, mítico, ultraente o paradoja.</p>
-      <div id="weeklyRefreshLabel" class="weekly-label"></div>
-      <div id="dailyPrizeSlots" class="prize-slots"></div>
+      <p class="muted">Un giro gratuito por día. Tiene 7 premios y se renueva cada domingo; siempre incluye un Pokémon casi imposible.</p>
       <div class="wheel-wrap"><div id="dailyWheel" class="wheel"></div><div class="wheel-center">DIARIA</div></div>
-      <button id="spinDailyButton" style="width:100%;margin-top:16px">Girar gratis</button>
-      <div id="dailyResult" class="card pokemon-result" style="margin-top:12px"><strong>Sin girar</strong><span>—</span></div>
+      <button id="spinDailyButton" style="width:100%;margin-top:16px">Girar una vez al día</button>
+      <div id="dailyResult" class="card" style="margin-top:12px">Sin girar.</div>
     </div>
     <div class="panel">
-      <h2>Ruleta de Pokémon</h2>
-      <p class="muted">Cada tiro entrega un Pokémon. Un tiro cuesta 100 créditos y 10 tiros instantáneos cuestan 1.000 créditos.</p>
-      <div class="wheel-wrap"><div id="paidWheel" class="wheel"></div><div class="wheel-center">PKM</div></div>
-      <div class="row wheel-actions" style="margin-top:16px">
-        <button id="spinPaidButton">1 tiro · 100</button>
-        <button id="spinPaidTenButton" class="secondary">10 tiros · 1.000</button>
-      </div>
-      <div id="paidResult" class="card pokemon-result" style="margin-top:12px"><strong>Sin girar</strong><span>—</span></div>
-      <div id="paidTenResults" class="ten-results"></div>
+      <h2>Ruleta Pokémon</h2>
+      <div class="wheel-wrap"><div id="paidWheel" class="wheel"></div><div class="wheel-center">100</div></div>
+      <div class="row" style="margin-top:16px"><button id="spinPaidButton">1 tiro · 100 créditos</button><button id="spinPaidTenButton" class="secondary">10 tiros · 1.000 créditos</button></div>
+      <div id="paidResult" class="card" style="margin-top:12px">Sin girar.</div>
+      <button id="acceptPaidReward" hidden style="width:100%;margin-top:10px">Aceptar recompensa</button>
     </div>
   </section>
 
@@ -135,13 +126,7 @@
     </div>
   </section>
 
-  <section id="view-events" class="view admin-only">
-    <div class="subnav" id="eventSubnav">
-      <button data-event-tab="tournaments" class="active">🏆 Torneos</button>
-      <button data-event-tab="pvp">⚔️ Peleas individuales</button>
-    </div>
-
-    <div id="event-tab-tournaments" class="event-tab active">
+  <section id="view-tournaments" class="view admin-only">
     <div class="panel">
       <h2>1. Crear torneo</h2>
       <div class="grid">
@@ -185,23 +170,6 @@
       <div id="bracketStatus" class="muted" style="margin-top:10px"></div>
       <div id="knockoutBracket" class="grid" style="margin-top:14px"></div>
     </div>
-    </div>
-
-    <div id="event-tab-pvp" class="event-tab">
-      <div class="panel">
-        <h2>Crear pelea individual</h2>
-        <div class="grid">
-          <div><label>Nombre del evento</label><input id="pvpEventName" placeholder="Ej: Reto amistoso"></div>
-          <div><label>Modalidad</label><select id="pvpFormat"><option value="1v1">1 vs 1</option><option value="2v2">2 vs 2</option><option value="1v1-double">1 vs 1 doble</option></select></div>
-        </div>
-        <div id="pvpSides" class="grid" style="margin-top:12px"></div>
-        <button id="createPvpEvent" style="margin-top:12px">Crear pelea</button>
-      </div>
-      <div class="panel">
-        <h2>Peleas individuales</h2>
-        <div id="pvpEventList"></div>
-      </div>
-    </div>
   </section>
 </main>
 
@@ -228,6 +196,6 @@
   </div>
 </div>
 
-<script type="module" src="./app.js?v=9"></script>
+<script type="module" src="./app.js?v=10"></script>
 </body>
 </html>

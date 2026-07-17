@@ -26,16 +26,3 @@ Ejecuta `reset_data.sql` en Supabase.
 ## Seguridad
 
 Esta versión está pensada para una liga privada entre amigos. Usa una publishable key y políticas públicas para funcionar directamente desde GitHub Pages, sin servidor propio. No la uses para apuestas con dinero real ni contraseñas reutilizadas.
-
-## Versión 5
-- Finalización de peleas y creación de fases con actualización optimista inmediata.
-- Eliminatorias formadas únicamente por los primeros N de cada grupo.
-- ELO visible solo para el organizador.
-- ELO individual según rival, resultado y KO; en 2v2 usa el promedio rival y da prioridad natural al jugador de menor ELO.
-- Las dobles entregan menos ELO y los partidos de torneo aplican multiplicador x2.
-
-## Cambios v6
-- Nueva pestaña administrativa **Eventos**, con subpestañas **Torneos** y **Peleas individuales**.
-- Peleas individuales 1v1, 2v2 y 1v1 doble, integradas con apuestas, marcador en vivo, cuotas y ELO.
-- Botón para reiniciar todas las estadísticas y botón individual por jugador.
-- El reinicio devuelve ELO a 1000 y pone PG, PP, KO+ y KO- en cero.

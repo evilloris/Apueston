@@ -30,24 +30,10 @@ function todayBolivia(){
   return new Intl.DateTimeFormat("en-CA",{timeZone:CONFIG.DAILY_WHEEL_TIMEZONE,year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 }
 function expected(a,b){ return 1/(1+10**((b-a)/400)); }
-function clampOdds(value){ return Math.max(1.001, +Number(value || 1.001).toFixed(3)); }
-function probabilityFromOdds(odds){ return Math.max(.01,Math.min(.99,1/Math.max(1.001,Number(odds)||2))); }
-function logit(p){ p=Math.max(.01,Math.min(.99,p)); return Math.log(p/(1-p)); }
-function logistic(x){ return 1/(1+Math.exp(-x)); }
-function oddsFromProbability(pa){
-  pa=Math.max(.015,Math.min(.985,pa));
-  const payoutFactor=.94;
-  return {a:clampOdds(payoutFactor/pa),b:clampOdds(payoutFactor/(1-pa))};
-}
-function oddsFromElo(a,b){ return oddsFromProbability(expected(a,b)); }
-function winnerBetPools(match){
-  let a=0,b=0;
-  for(const bet of state.bets){
-    if(bet.match_id!==match.id || bet.bet_type!=="winner" || bet.status!=="pending")continue;
-    if(bet.selection?.participant_id===match.side_a)a+=Number(bet.stake)||0;
-    if(bet.selection?.participant_id===match.side_b)b+=Number(bet.stake)||0;
-  }
-  return {a,b,total:a+b};
+function oddsFromElo(a,b){
+  const pa=Math.max(.08,Math.min(.92,expected(a,b)));
+  const margin=.90;
+  return {a:+(margin/pa).toFixed(2), b:+(margin/(1-pa)).toFixed(2)};
 }
 function scoreOdds(eloA,eloB,a,b){
   const expectedDiff=(eloA-eloB)/180;
@@ -95,8 +81,7 @@ function renderAll(){
   $("#loginButton").hidden=!!state.account; $("#logoutButton").hidden=!state.account;
   renderLeaderboard(); renderActiveEvents(); renderTournamentSelects(); renderBetMatches(); renderBetTournamentStandings(); renderBetStandings();
   renderMyBets(); renderGeneralStats(); renderResults(); renderAccountsAdmin();
-  renderCreditsAdmin(); renderTournamentsAdmin(); renderPvpEvents(); renderRewards(); updateDailyButton();
-  if($("#betModal")?.classList.contains("open")) updateBetPreview();
+  renderCreditsAdmin(); renderTournamentsAdmin(); renderRewards(); updateDailyButton();
 }
 function switchView(view){
   const target=$(`#view-${view}`);
@@ -115,13 +100,6 @@ function switchView(view){
   window.scrollTo({top:0,behavior:"smooth"});
 }
 $("#nav").addEventListener("click",e=>{const b=e.target.closest("[data-view]");if(b)switchView(b.dataset.view)});
-
-$("#eventSubnav")?.addEventListener("click",e=>{
-  const b=e.target.closest("[data-event-tab]");if(!b)return;
-  $$("[data-event-tab]",$("#eventSubnav")).forEach(x=>x.classList.toggle("active",x===b));
-  $$(".event-tab",$("#view-events")).forEach(x=>x.classList.toggle("active",x.id===`event-tab-${b.dataset.eventTab}`));
-  if(b.dataset.eventTab==="pvp")renderPvpSides();
-});
 
 function modal(id,open=true){ $(id).classList.toggle("open",open); }
 $$("[data-close-modal]").forEach(b=>b.onclick=()=>b.closest(".modal").classList.remove("open"));
@@ -171,32 +149,7 @@ $("#adminTournamentSelect").onchange=()=>{renderParticipantList();renderMatchAdm
 function dynamicOdds(match){
   const a=state.participants.find(p=>p.id===match.side_a),b=state.participants.find(p=>p.id===match.side_b);
   const ra=rankingFor(a?.display_name).elo, rb=rankingFor(b?.display_name).elo;
-
-  // Base por ELO o por las cuotas manuales elegidas por el organizador.
-  let pA=expected(ra,rb);
-  const manualA=Number(match.base_odds?.manual_a),manualB=Number(match.base_odds?.manual_b);
-  if(manualA>=1.001 && manualB>=1.001){
-    const ia=probabilityFromOdds(manualA),ib=probabilityFromOdds(manualB);
-    pA=ia/(ia+ib);
-  }
-
-  // El dinero apostado mueve la cuota: más apuestas a un lado = menor cuota para ese lado.
-  const pool=winnerBetPools(match);
-  if(pool.total>0){
-    const virtualLiquidity=500;
-    const crowdA=(pool.a+(virtualLiquidity*pA))/(pool.total+virtualLiquidity);
-    const crowdWeight=Math.min(.55,pool.total/(pool.total+700));
-    pA=(pA*(1-crowdWeight))+(crowdA*crowdWeight);
-  }
-
-  // Durante la pelea, el marcador pesa cada vez más según la diferencia.
-  if(match.status==="live"){
-    const diff=(Number(match.score_a)||0)-(Number(match.score_b)||0);
-    const abs=Math.abs(diff);
-    const strength=abs<=2?.20:abs<=4?.38:.72;
-    pA=logistic(logit(pA)+(diff*strength));
-  }
-  return oddsFromProbability(pA);
+  return oddsFromElo(ra,rb);
 }
 
 function renderBetStandings(){
@@ -233,22 +186,15 @@ function renderBetMatches(){
   const tid=$("#betTournamentSelect").value;
   const list=state.matches.filter(m=>m.tournament_id===tid&&["scheduled","live"].includes(m.status)&&m.side_a&&m.side_b);
   $("#betMatches").innerHTML=list.map(m=>{
-    const o=dynamicOdds(m),live=m.status==="live";
-    return `<div class="card match clickable ${live?"live-match":""}" data-bet-match="${m.id}">
-      <div class="match-topline">
-        <div class="muted">${esc(m.phase)} · ronda ${m.round_no}</div>
-        ${live?'<span class="live-badge"><i></i> EN VIVO</span>':''}
-      </div>
-      <div class="live-score-grid">
-        <div class="live-team"><strong>${esc(participantName(m.side_a))}</strong><span class="live-score">${m.score_a??0}</span></div>
-        <span class="vs">VS</span>
-        <div class="live-team"><strong>${esc(participantName(m.side_b))}</strong><span class="live-score">${m.score_b??0}</span></div>
-      </div>
-      <div class="odds"><span>x${o.a.toFixed(3)}</span><span>x${o.b.toFixed(3)}</span></div>
-      <div class="muted">${m.scheduled_at?new Date(m.scheduled_at).toLocaleString("es-BO"):"Sin horario asignado"}</div>
+    const o=dynamicOdds(m);
+    return `<div class="card match clickable" data-bet-match="${m.id}">
+      <div class="muted">${esc(m.phase)} · ronda ${m.round_no}</div>
+      <div class="teams"><span>${esc(participantName(m.side_a))}</span><span>vs</span><span>${esc(participantName(m.side_b))}</span></div>
+      <div class="odds"><span>x${o.a}</span><span>x${o.b}</span></div>
+      <div class="muted">${m.scheduled_at?new Date(m.scheduled_at).toLocaleString("es-BO"):"Sin horario"}</div>
     </div>`;
   }).join("")||'<div class="muted">No hay enfrentamientos abiertos.</div>';
-  $$('[data-bet-match]').forEach(c=>c.onclick=()=>openBet(c.dataset.betMatch));
+  $$("[data-bet-match]").forEach(c=>c.onclick=()=>openBet(c.dataset.betMatch));
 }
 function openBet(id){
   if(!state.account){alert("Primero inicia sesión.");return}
@@ -279,7 +225,7 @@ function currentBetOdds(){
 }
 function updateBetPreview(){
   const odds=currentBetOdds(),stake=+$("#betStake").value||0;
-  $("#betOddsPreview").textContent=`Cuota x${Number(odds).toFixed(3)} · pago potencial ${money(Math.floor(stake*odds))}`;
+  $("#betOddsPreview").textContent=`Cuota x${odds} · pago potencial ${money(Math.floor(stake*odds))}`;
 }
 $("#betStake").oninput=updateBetPreview;
 $("#confirmBet").onclick=async()=>{
@@ -307,37 +253,16 @@ function renderMyBets(){
 }
 
 function renderGeneralStats(){
-  const panel=$("#generalStats")?.closest(".panel");
-  if(panel) panel.hidden=!state.admin;
-  if(!state.admin){$("#generalStats").innerHTML="";return;}
   const accountNames=new Set(state.accounts.map(a=>a.username.toLowerCase()));
-  const rows=state.rankings.filter(r=>accountNames.has(r.name.toLowerCase())).map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.name)}</td><td>${r.elo}</td><td>${r.wins}</td><td>${r.losses}</td><td>${r.kos_for}</td><td>${r.kos_against}</td><td><button class="danger" data-reset-ranking="${esc(r.name)}">Reiniciar</button></td></tr>`).join("");
-  $("#generalStats").innerHTML=`<table><thead><tr><th>#</th><th>Jugador</th><th>ELO</th><th>PG</th><th>PP</th><th>KO+</th><th>KO-</th><th>Acción</th></tr></thead><tbody>${rows||'<tr><td colspan="8">Sin estadísticas.</td></tr>'}</tbody></table>`;
-  $$('[data-reset-ranking]').forEach(b=>b.onclick=()=>resetRanking(b.dataset.resetRanking));
+  const rows=state.rankings.filter(r=>accountNames.has(r.name.toLowerCase())).map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.name)}</td><td>${r.elo}</td><td>${r.wins}</td><td>${r.losses}</td><td>${r.kos_for}</td><td>${r.kos_against}</td></tr>`).join("");
+  $("#generalStats").innerHTML=`<table><thead><tr><th>#</th><th>Jugador</th><th>ELO</th><th>PG</th><th>PP</th><th>KO+</th><th>KO-</th></tr></thead><tbody>${rows||'<tr><td colspan="7">Sin estadísticas.</td></tr>'}</tbody></table>`;
 }
-async function resetRanking(name){
-  if(!state.admin)return;
-  const row={name,elo:1000,wins:0,losses:0,kos_for:0,kos_against:0};
-  const {error}=await supabase.from("rankings").upsert(row,{onConflict:"name"});
-  if(error){alert(error.message);return}await loadAll();
-}
-$("#resetAllRankings").onclick=async()=>{
-  if(!state.admin)return;
-  const rows=state.accounts.map(a=>({name:a.username,elo:1000,wins:0,losses:0,kos_for:0,kos_against:0}));
-  if(!rows.length)return;
-  const {error}=await supabase.from("rankings").upsert(rows,{onConflict:"name"});
-  if(error){alert(error.message);return}await loadAll();
-};
-
 function standingsFor(tid){
-  const ps=state.participants.filter(p=>p.tournament_id===tid);
-  const ms=state.matches.filter(m=>m.tournament_id===tid&&m.phase==="group"&&["live","finished","walkover"].includes(m.status));
+  const ps=state.participants.filter(p=>p.tournament_id===tid), ms=state.matches.filter(m=>m.tournament_id===tid&&m.phase==="group"&&["finished","walkover"].includes(m.status));
   const map=new Map(ps.map(p=>[p.id,{...p,pj:0,pg:0,pts:0,kf:0,kc:0}]));
   for(const m of ms){
     const a=map.get(m.side_a),b=map.get(m.side_b);if(!a||!b)continue;
-    a.kf+=m.score_a||0;a.kc+=m.score_b||0;b.kf+=m.score_b||0;b.kc+=m.score_a||0;
-    if(m.status==="live")continue;
-    a.pj++;b.pj++;
+    a.pj++;b.pj++;a.kf+=m.score_a||0;a.kc+=m.score_b||0;b.kf+=m.score_b||0;b.kc+=m.score_a||0;
     if(m.winner_id===a.id){a.pg++;a.pts+=3}else if(m.winner_id===b.id){b.pg++;b.pts+=3}else{a.pts++;b.pts++}
   }
   return [...map.values()].sort((a,b)=>a.group_no-b.group_no||b.pts-a.pts||((b.kf-b.kc)-(a.kf-a.kc)));
@@ -363,7 +288,7 @@ function renderAccountsAdmin(){
   $("#accountAdminList").innerHTML=`<table><thead><tr><th>Cuenta</th><th>Saldo</th><th>Visible</th><th>Acciones</th></tr></thead><tbody>${rows||'<tr><td colspan="4">Sin cuentas.</td></tr>'}</tbody></table>`;
   $$("[data-visible]").forEach(x=>x.onchange=async()=>{await supabase.from("accounts").update({visible:x.checked}).eq("id",x.dataset.visible);loadAll()});
   $$("[data-reset]").forEach(x=>x.onclick=async()=>{const p=randomPassword();await supabase.from("accounts").update({password_hash:await sha256(p)}).eq("id",x.dataset.reset);alert("Nueva contraseña: "+p)});
-  $$("[data-delete-account]").forEach(x=>x.onclick=async()=>{{await supabase.from("accounts").delete().eq("id",x.dataset.deleteAccount);loadAll()}});
+  $$("[data-delete-account]").forEach(x=>x.onclick=async()=>{if(confirm("¿Eliminar la cuenta y todos sus datos?")){await supabase.from("accounts").delete().eq("id",x.dataset.deleteAccount);loadAll()}});
 }
 function renderCreditsAdmin(){
   const rows=state.accounts.map(a=>`<tr><td>${esc(a.username)}</td><td>${money(a.credits)}</td><td><input type="number" min="1" value="100" data-credit-input="${a.id}"></td><td><button data-add-credit="${a.id}">Sumar</button> <button class="danger" data-remove-credit="${a.id}">Retirar</button></td></tr>`).join("");
@@ -430,7 +355,7 @@ $("#createTournament").onclick=async()=>{
 };
 
 function renderTournamentsAdmin(){
-  $("#tournamentAdminList").innerHTML=state.tournaments.filter(t=>t.config?.event_kind!=="pvp").map(t=>{
+  $("#tournamentAdminList").innerHTML=state.tournaments.map(t=>{
     const count=t.config?.participant_count||0;
     return `<div class="card">
       <strong>${esc(t.name)}</strong>
@@ -446,7 +371,7 @@ function renderTournamentsAdmin(){
     renderParticipantCards();renderMatchAdmin();renderKnockoutPanel();
   });
   $$("[data-delete-tournament]").forEach(b=>b.onclick=async()=>{
-    {
+    if(confirm("¿Eliminar torneo completo?")){
       await supabase.from("tournaments").delete().eq("id",b.dataset.deleteTournament);
       await loadAll();
     }
@@ -541,7 +466,7 @@ $("#saveParticipantsButton").onclick=async()=>{
   const {error}=await supabase.from("tournament_participants").insert(rows);
   if(error){alert(error.message);return}
   await loadAll();$("#adminTournamentSelect").value=tid;renderParticipantCards();
-
+  alert("Participantes guardados.");
 };
 
 $("#fairPairingButton").onclick=()=>{
@@ -611,9 +536,6 @@ function renderMatchAdmin(){
   $$("[data-walkover-a]").forEach(b=>b.onclick=()=>finishMatch(b.dataset.walkoverA,true,"a"));
   $$("[data-walkover-b]").forEach(b=>b.onclick=()=>finishMatch(b.dataset.walkoverB,true,"b"));
   $$("[data-save-schedule]").forEach(b=>b.onclick=()=>saveSchedule(b.dataset.saveSchedule));
-  $$("[data-save-odds]").forEach(b=>b.onclick=()=>saveManualOdds(b.dataset.saveOdds));
-  $$("[data-clear-odds]").forEach(b=>b.onclick=()=>clearManualOdds(b.dataset.clearOdds));
-  $$("[data-live-score]").forEach(input=>input.oninput=()=>queueLiveScoreSave(input.dataset.liveScore));
 }
 function matchCardAdmin(m){
   const started=m.status==="live",done=["finished","walkover"].includes(m.status);
@@ -628,18 +550,12 @@ function matchCardAdmin(m){
     <div class="fight-vs">
       <span>${esc(participantName(m.side_a))}</span><span class="vs">VS</span><span>${esc(participantName(m.side_b))}</span>
     </div>
-    <div class="manual-odds-box">
-      <div><label>Cuota manual ${esc(participantName(m.side_a))}</label><input type="number" min="1.001" step="0.001" value="${m.base_odds?.manual_a??''}" data-manual-odds-a="${m.id}" placeholder="Automática"></div>
-      <div><label>Cuota manual ${esc(participantName(m.side_b))}</label><input type="number" min="1.001" step="0.001" value="${m.base_odds?.manual_b??''}" data-manual-odds-b="${m.id}" placeholder="Automática"></div>
-      <button class="secondary" data-save-odds="${m.id}">Guardar cuotas</button>
-      <button class="danger" data-clear-odds="${m.id}">Usar ELO</button>
-    </div>
     <div class="fight-controls">
       ${done?`<div class="card"><strong>Resultado: ${m.score_a??0} - ${m.score_b??0}</strong> · ${m.status==="walkover"?"Walkover":"Finalizada"}</div>`:
       started?`<div class="score-box">
-        <input type="number" min="0" value="${m.score_a??0}" data-score-a="${m.id}" data-live-score="${m.id}">
+        <input type="number" min="0" value="${m.score_a??0}" data-score-a="${m.id}">
         <span>—</span>
-        <input type="number" min="0" value="${m.score_b??0}" data-score-b="${m.id}" data-live-score="${m.id}">
+        <input type="number" min="0" value="${m.score_b??0}" data-score-b="${m.id}">
         <button data-finish-match="${m.id}">Finalizar pelea</button>
       </div>
       <div class="row" style="margin-top:8px">
@@ -650,133 +566,32 @@ function matchCardAdmin(m){
     </div>
   </div>`;
 }
-const liveScoreTimers=new Map();
-function queueLiveScoreSave(id){
-  const m=state.matches.find(x=>x.id===id);if(!m)return;
-  const a=Math.max(0,+document.querySelector(`[data-score-a="${id}"]`)?.value||0);
-  const b=Math.max(0,+document.querySelector(`[data-score-b="${id}"]`)?.value||0);
-  m.score_a=a;m.score_b=b;
-  renderBetMatches();renderBetStandings();renderBetTournamentStandings();
-  clearTimeout(liveScoreTimers.get(id));
-  liveScoreTimers.set(id,setTimeout(async()=>{
-    const {error}=await supabase.from("matches").update({score_a:a,score_b:b,status:"live"}).eq("id",id);
-    if(error)console.error(error);
-  },350));
-}
-async function saveManualOdds(id){
-  const a=Number(document.querySelector(`[data-manual-odds-a="${id}"]`)?.value);
-  const b=Number(document.querySelector(`[data-manual-odds-b="${id}"]`)?.value);
-  if(a<1.001||b<1.001){alert("Ambas cuotas deben ser de al menos 1.001.");return}
-  const {error}=await supabase.from("matches").update({base_odds:{manual_a:a,manual_b:b}}).eq("id",id);
-  if(error)alert(error.message);else await loadAll();
-}
-async function clearManualOdds(id){
-  const {error}=await supabase.from("matches").update({base_odds:{}}).eq("id",id);
-  if(error)alert(error.message);else await loadAll();
-}
 async function saveSchedule(id){
   const value=document.querySelector(`[data-match-date="${id}"]`).value;
   const {error}=await supabase.from("matches").update({scheduled_at:value?new Date(value).toISOString():null}).eq("id",id);
-  if(error)console.error(error);
+  if(error)alert(error.message);else alert("Fecha y hora guardadas.");
 }
 async function startMatch(id){
   await supabase.from("matches").update({status:"live"}).eq("id",id);
   await loadAll();renderMatchAdmin();
 }
-function participantMemberNames(participant){
-  const names=(participant?.members||[]).map(botOrAccountName).filter(Boolean);
-  return names.length?names:[participant?.display_name].filter(Boolean);
-}
-function performanceEloDelta(playerElo,opponentAverage,didWin,kBase,kosFor,kosAgainst){
-  const exp=expected(playerElo,opponentAverage);
-  const result=didWin?1:0;
-  const scoreDiff=Number(kosFor||0)-Number(kosAgainst||0);
-  // Los KO modifican el resultado, pero no pueden dominar por completo la victoria/derrota.
-  const koAdjustment=Math.max(-0.35,Math.min(0.35,scoreDiff*0.055));
-  const raw=kBase*((result-exp)+koAdjustment);
-  return Math.round(raw)|| (didWin?1:-1);
-}
-async function updateRankingAfterMatch(match,scoreA,scoreB,winnerId){
-  const pa=state.participants.find(p=>p.id===match.side_a);
-  const pb=state.participants.find(p=>p.id===match.side_b);
-  if(!pa||!pb)return;
-  const namesA=participantMemberNames(pa),namesB=participantMemberNames(pb);
-  const avgA=namesA.reduce((sum,n)=>sum+rankingFor(n).elo,0)/Math.max(1,namesA.length);
-  const avgB=namesB.reduce((sum,n)=>sum+rankingFor(n).elo,0)/Math.max(1,namesB.length);
-  const isDouble=(tournamentById(match.tournament_id)?.format==="2v2")||namesA.length>1||namesB.length>1;
-  // Las dobles dan menos puntos. Todo resultado de torneo vale x2 frente a un PVP normal.
-  const tournamentMultiplier=2;
-  const kBase=(isDouble?14:24)*tournamentMultiplier;
-  const wonA=winnerId===match.side_a;
-  const updates=[];
-  for(const name of namesA){
-    const current=rankingFor(name);
-    const delta=performanceEloDelta(current.elo,avgB,wonA,kBase,scoreA,scoreB);
-    updates.push({name,elo:Math.max(100,current.elo+delta),wins:current.wins+(wonA?1:0),losses:current.losses+(wonA?0:1),kos_for:current.kos_for+scoreA,kos_against:current.kos_against+scoreB});
-  }
-  for(const name of namesB){
-    const current=rankingFor(name);
-    const delta=performanceEloDelta(current.elo,avgA,!wonA,kBase,scoreB,scoreA);
-    updates.push({name,elo:Math.max(100,current.elo+delta),wins:current.wins+(wonA?0:1),losses:current.losses+(wonA?1:0),kos_for:current.kos_for+scoreB,kos_against:current.kos_against+scoreA});
-  }
-  const {error}=await supabase.from("rankings").upsert(updates,{onConflict:"name"});
-  if(error)console.error("No se pudo actualizar el ELO:",error);
-}
-async function settleBets(matchId){
-  const m=state.matches.find(x=>x.id===matchId);if(!m)return;
-  const pending=state.bets.filter(b=>b.match_id===matchId&&b.status==="pending");
-  for(const bet of pending){
-    let won=false,refunded=false;
-    if(bet.bet_type==="winner") won=bet.selection?.participant_id===m.winner_id;
-    else if(bet.bet_type==="score") won=Number(bet.selection?.score_a)===Number(m.score_a)&&Number(bet.selection?.score_b)===Number(m.score_b);
-    else if(bet.bet_type==="handicap"){
-      const pid=bet.selection?.participant_id,line=Number(bet.selection?.line||0);
-      const selectedScore=pid===m.side_a?Number(m.score_a):Number(m.score_b);
-      const otherScore=pid===m.side_a?Number(m.score_b):Number(m.score_a);
-      const adjusted=selectedScore+line;
-      if(adjusted===otherScore)refunded=true;else won=adjusted>otherScore;
-    }else continue;
-    const payout=refunded?Number(bet.stake):won?Math.floor(Number(bet.stake)*Number(bet.locked_odds)):0;
-    await supabase.from("bets").update({status:refunded?"refunded":won?"won":"lost",payout}).eq("id",bet.id);
-    if(payout>0){
-      const account=state.accounts.find(a=>a.id===bet.account_id);
-      if(account){
-        account.credits+=payout;
-        await supabase.from("accounts").update({credits:account.credits}).eq("id",account.id);
-      }
-    }
-  }
-}
 async function finishMatch(id,walkover=false,side=null){
   const m=state.matches.find(x=>x.id===id);if(!m)return;
-  const button=document.querySelector(`[data-finish-match="${id}"]`)||document.querySelector(`[data-walkover-a="${id}"]`)||document.querySelector(`[data-walkover-b="${id}"]`);
-  if(button){button.disabled=true;button.textContent="Finalizando…"}
   let a=0,b=0,winner=null,status="finished";
   if(walkover){
     status="walkover";winner=side==="a"?m.side_a:m.side_b;a=side==="a"?1:0;b=side==="b"?1:0;
   }else{
-    clearTimeout(liveScoreTimers.get(id));
     a=+document.querySelector(`[data-score-a="${id}"]`).value;
     b=+document.querySelector(`[data-score-b="${id}"]`).value;
-    if(a===b){alert("El marcador no puede terminar empatado.");if(button)button.disabled=false;return}
+    if(a===b){alert("El marcador no puede terminar empatado.");return}
     winner=a>b?m.side_a:m.side_b;
   }
-  // Cambio local inmediato para que la interfaz responda sin esperar Realtime.
-  Object.assign(m,{score_a:a,score_b:b,status,winner_id:winner});
-  renderMatchAdmin();renderKnockoutPanel();renderBetMatches();renderBetStandings();renderBetTournamentStandings();renderResults();
-  const {error}=await supabase.from("matches").update({score_a:a,score_b:b,status,winner_id:winner}).eq("id",id);
-  if(error){alert(error.message);await loadAll();return}
-  await Promise.all([updateRankingAfterMatch(m,a,b,winner),settleBets(id)]);
-  // Crear la siguiente fase antes de recargar, para que aparezca en la misma acción.
-  const eventTournament=tournamentById(m.tournament_id);
-  if(eventTournament?.config?.event_kind==="pvp"){
-    eventTournament.status="finished";
-    await supabase.from("tournaments").update({status:"finished"}).eq("id",m.tournament_id);
-  }else if(m.phase==="group") await autoGenerateKnockout(m.tournament_id);
+  await supabase.from("matches").update({score_a:a,score_b:b,status,winner_id:winner}).eq("id",id);
+  await updateRankingAfterMatch(m,a,b,winner);
+  await settleBets(id);
+  await loadAll();$("#adminTournamentSelect").value=m.tournament_id;renderMatchAdmin();
+  if(m.phase==="group") await autoGenerateKnockout(m.tournament_id);
   else await advanceKnockout(m.tournament_id,m.phase);
-  await loadAll();
-  $("#adminTournamentSelect").value=m.tournament_id;
-  renderMatchAdmin();renderKnockoutPanel();
 }
 
 async function autoGenerateKnockout(tid){
@@ -786,119 +601,92 @@ async function autoGenerateKnockout(tid){
   if(mainExisting){renderKnockoutPanel();return}
   await generateKnockoutRows(tid);
 }
-function isPowerOfTwo(n){return n>0&&(n&(n-1))===0}
-function nextLowerPowerOfTwo(n){return 2**Math.floor(Math.log2(Math.max(1,n)))}
-function knockoutSeedOrder(qualifiers,groups,q){
-  const byGroup=new Map(groups.map(g=>[g,qualifiers.filter(x=>x.group_no===g)]));
-  if(groups.length===1)return qualifiers;
-  const ordered=[];
-  for(let rank=0;rank<q;rank++){
-    const gs=rank%2===0?groups:[...groups].reverse();
-    for(const g of gs){const item=byGroup.get(g)?.[rank];if(item)ordered.push(item)}
-  }
-  // Para 2 clasificados por grupo, esta distribución deja a los compañeros
-  // de grupo en mitades opuestas, por lo que solo pueden reencontrarse en la final.
-  if(q===2&&ordered.length>=4){
-    const first=groups.map(g=>byGroup.get(g)?.[0]).filter(Boolean);
-    const second=[...groups].reverse().map(g=>byGroup.get(g)?.[1]).filter(Boolean);
-    const pairs=[];
-    for(let i=0;i<first.length;i++)pairs.push(first[i],second[i]);
-    if(pairs.length===ordered.length)return pairs;
-  }
-  return ordered;
-}
-function repechageAllowed(t){
-  const groups=[...new Set(tournamentParticipants(t.id).map(p=>p.group_no))];
-  const total=groups.length*Number(t.config?.qualify_per_group||1);
-  return groups.length>1&&!isPowerOfTwo(total);
-}
 async function generateKnockoutRows(tid){
-  const t=tournamentById(tid),q=Number(t.config?.qualify_per_group||1);
+  const t=tournamentById(tid),q=t.config?.qualify_per_group||1;
   const groups=[...new Set(tournamentParticipants(tid).map(p=>p.group_no))].sort((a,b)=>a-b);
   const table=standingsFor(tid);
-  const qualifiers=groups.flatMap(g=>table.filter(x=>x.group_no===g).slice(0,q));
-  if(qualifiers.length<2)return;
-  if(tournamentMatches(tid).some(m=>["repechage","quarterfinal","semifinal","final"].includes(m.phase))){renderKnockoutPanel();return}
+  const qualifiers=[];
+  for(const g of groups)qualifiers.push(...table.filter(x=>x.group_no===g).slice(0,q));
 
-  if(!isPowerOfTwo(qualifiers.length)){
-    if(!t.config?.repechage||!repechageAllowed(t)){
-      $("#bracketStatus").textContent=`Clasificaron ${qualifiers.length}. Activa el repechaje para reducir la llave a una potencia de 2.`;
+  const repechage=t.config?.repechage ?? $("#enableRepechage").checked;
+  const third=t.config?.third_place ?? $("#enableThirdPlace").checked;
+  let rep=tournamentMatches(tid).find(m=>m.phase==="repechage");
+
+  if(repechage && !rep){
+    const extras=groups.map(g=>table.filter(x=>x.group_no===g)[q]).filter(Boolean);
+    if(extras.length>=2){
+      const {data,error}=await supabase.from("matches").insert({
+        tournament_id:tid,phase:"repechage",round_no:1,
+        side_a:extras[0].id,side_b:extras[1].id,status:"scheduled"
+      }).select().single();
+      if(error){alert(error.message);return}
+      rep=data;
+      $("#bracketStatus").textContent="Repechaje creado. Al finalizarlo se crearán las eliminatorias.";
+      await loadAll();$("#adminTournamentSelect").value=tid;renderMatchAdmin();renderKnockoutPanel();
       return;
     }
-    const target=nextLowerPowerOfTwo(qualifiers.length);
-    const playInMatches=qualifiers.length-target;
-    const seeded=knockoutSeedOrder(qualifiers,groups,q);
-    const byeCount=qualifiers.length-(playInMatches*2);
-    const byes=seeded.slice(0,byeCount).map(x=>x.id);
-    const playIn=seeded.slice(byeCount);
-    const rows=[];
-    for(let i=0;i<playIn.length;i+=2)rows.push({tournament_id:tid,phase:"repechage",round_no:1,side_a:playIn[i].id,side_b:playIn[i+1].id,status:"scheduled",base_odds:{knockout_byes:byes}});
-    const {data,error}=await supabase.from("matches").insert(rows).select();
-    if(error){console.error(error);return}
-    if(data?.length)state.matches.push(...data);
-    renderMatchAdmin();renderKnockoutPanel();renderBetMatches();return;
   }
 
-  await createMainKnockout(tid,knockoutSeedOrder(qualifiers,groups,q));
-}
-async function createMainKnockout(tid,qualifiers){
-  if(!isPowerOfTwo(qualifiers.length)||qualifiers.length<2)return;
+  if(rep && !["finished","walkover"].includes(rep.status)){
+    $("#bracketStatus").textContent="Falta finalizar el repechaje.";
+    return;
+  }
+  if(rep?.winner_id)qualifiers.push(state.participants.find(p=>p.id===rep.winner_id));
+
+  if(![2,4,8,16].includes(qualifiers.length)){
+    $("#bracketStatus").textContent=`Hay ${qualifiers.length} clasificados. Deben ser 2, 4, 8 o 16.`;
+    return;
+  }
+
   const phase=qualifiers.length===2?"final":qualifiers.length===4?"semifinal":"quarterfinal";
   const rows=[];
   for(let i=0;i<qualifiers.length;i+=2){
-    const a=qualifiers[i].id||qualifiers[i],b=qualifiers[i+1].id||qualifiers[i+1];
-    rows.push({tournament_id:tid,phase,round_no:1,side_a:a,side_b:b,status:"scheduled"});
+    rows.push({tournament_id:tid,phase,round_no:1,side_a:qualifiers[i].id,side_b:qualifiers[i+1].id,status:"scheduled"});
   }
-  const {data,error}=await supabase.from("matches").insert(rows).select();
-  if(error){console.error(error);return}
-  if(data?.length)state.matches.push(...data);
-  $("#adminTournamentSelect").value=tid;
-  renderMatchAdmin();renderKnockoutPanel();renderBetMatches();renderBetTournamentStandings();
+  const {error}=await supabase.from("matches").insert(rows);
+  if(error){alert(error.message);return}
+  await supabase.from("tournaments").update({config:{...t.config,repechage,third_place:third}}).eq("id",tid);
+  await loadAll();$("#adminTournamentSelect").value=tid;renderMatchAdmin();renderKnockoutPanel();
 }
 async function advanceKnockout(tid,finishedPhase){
   const t=tournamentById(tid);if(!t)return;
-  let rows=[];
+
   if(finishedPhase==="repechage"){
-    const reps=tournamentMatches(tid).filter(m=>m.phase==="repechage");
-    if(reps.length&&reps.every(m=>["finished","walkover"].includes(m.status))&&!tournamentMatches(tid).some(m=>["quarterfinal","semifinal","final"].includes(m.phase))){
-      const byes=Array.isArray(reps[0]?.base_odds?.knockout_byes)?reps[0].base_odds.knockout_byes:[];
-      const winners=reps.map(m=>m.winner_id);
-      const ids=[...byes,...winners];
-      const participants=ids.map(id=>state.participants.find(p=>p.id===id)).filter(Boolean);
-      await createMainKnockout(tid,participants);
-      return;
-    }
-  }else if(finishedPhase==="quarterfinal"){
+    await generateKnockoutRows(tid);
+    return;
+  }
+
+  if(finishedPhase==="quarterfinal"){
     const matches=tournamentMatches(tid).filter(m=>m.phase==="quarterfinal");
-    if(matches.length&&matches.every(m=>["finished","walkover"].includes(m.status))&&!tournamentMatches(tid).some(m=>m.phase==="semifinal")){
+    if(matches.length&&matches.every(m=>["finished","walkover"].includes(m.status)) &&
+       !tournamentMatches(tid).some(m=>m.phase==="semifinal")){
       const winners=matches.map(m=>m.winner_id);
+      const rows=[];
       for(let i=0;i<winners.length;i+=2)rows.push({tournament_id:tid,phase:"semifinal",round_no:1,side_a:winners[i],side_b:winners[i+1],status:"scheduled"});
+      await supabase.from("matches").insert(rows);
     }
-  }else if(finishedPhase==="semifinal"){
+  }
+
+  if(finishedPhase==="semifinal"){
     const semis=tournamentMatches(tid).filter(m=>m.phase==="semifinal");
-    if(semis.length===2&&semis.every(m=>["finished","walkover"].includes(m.status))&&!tournamentMatches(tid).some(m=>m.phase==="final")){
-      const winners=semis.map(m=>m.winner_id),losers=semis.map(m=>m.side_a===m.winner_id?m.side_b:m.side_a);
-      rows=[{tournament_id:tid,phase:"final",round_no:1,side_a:winners[0],side_b:winners[1],status:"scheduled"}];
+    if(semis.length===2&&semis.every(m=>["finished","walkover"].includes(m.status)) &&
+       !tournamentMatches(tid).some(m=>m.phase==="final")){
+      const winners=semis.map(m=>m.winner_id);
+      const losers=semis.map(m=>m.side_a===m.winner_id?m.side_b:m.side_a);
+      const rows=[{tournament_id:tid,phase:"final",round_no:1,side_a:winners[0],side_b:winners[1],status:"scheduled"}];
       if(t.config?.third_place!==false)rows.push({tournament_id:tid,phase:"third_place",round_no:1,side_a:losers[0],side_b:losers[1],status:"scheduled"});
+      await supabase.from("matches").insert(rows);
     }
-  }else if(finishedPhase==="final"){
-    t.status="finished";
+  }
+
+  if(finishedPhase==="final"){
     await supabase.from("tournaments").update({status:"finished"}).eq("id",tid);
   }
-  if(rows.length){
-    const {data,error}=await supabase.from("matches").insert(rows).select();
-    if(error){alert(error.message);return}
-    if(data?.length)state.matches.push(...data);
-  }
-  $("#adminTournamentSelect").value=tid;
-  renderMatchAdmin();renderKnockoutPanel();renderBetMatches();renderBetTournamentStandings();
+  await loadAll();$("#adminTournamentSelect").value=tid;renderMatchAdmin();renderKnockoutPanel();
 }
 function renderKnockoutPanel(){
   const tid=$("#adminTournamentSelect").value,t=tournamentById(tid);if(!t)return;
-  const canRepechage=repechageAllowed(t);
-  $("#enableRepechage").disabled=!canRepechage;
-  $("#enableRepechage").checked=canRepechage&&!!t.config?.repechage;
-  $("#enableRepechage").closest("label").title=canRepechage?"Disponible para ajustar la cantidad de clasificados.":"Solo está disponible con varios grupos y cuando los clasificados no forman una potencia de 2.";
+  $("#enableRepechage").checked=!!t.config?.repechage;
   $("#enableThirdPlace").checked=t.config?.third_place!==false;
   const done=isGroupStageComplete(tid);
   $("#bracketStatus").textContent=done?"La fase de grupos terminó. Las eliminatorias se generan automáticamente.":"Las eliminatorias aparecerán al finalizar todas las peleas de grupos.";
@@ -910,11 +698,9 @@ function renderKnockoutPanel(){
   </div>`).join("")||'<div class="muted">Aún no hay cruces eliminatorios.</div>';
 }
 $("#enableRepechage").onchange=async()=>{
-  const tid=$("#adminTournamentSelect").value,t=tournamentById(tid);if(!t||!repechageAllowed(t))return;
-  t.config={...t.config,repechage:$("#enableRepechage").checked};
-  renderKnockoutPanel();
-  const {error}=await supabase.from("tournaments").update({config:t.config}).eq("id",tid);
-  if(error){console.error(error);return}
+  const tid=$("#adminTournamentSelect").value,t=tournamentById(tid);if(!t)return;
+  await supabase.from("tournaments").update({config:{...t.config,repechage:$("#enableRepechage").checked}}).eq("id",tid);
+  await loadAll();$("#adminTournamentSelect").value=tid;renderKnockoutPanel();
   if(isGroupStageComplete(tid))await autoGenerateKnockout(tid);
 };
 $("#enableThirdPlace").onchange=async()=>{
@@ -923,209 +709,111 @@ $("#enableThirdPlace").onchange=async()=>{
   await loadAll();$("#adminTournamentSelect").value=tid;renderKnockoutPanel();
 };
 
-
-function pvpMemberSelect(side,index){
-  return `<div><label>${side} · integrante ${index+1}</label><select data-pvp-member="${side}-${index}">${accountOptions()}</select></div>`;
-}
-function renderPvpSides(){
-  const format=$("#pvpFormat")?.value||"1v1",team=format==="2v2";
-  if(!$("#pvpSides"))return;
-  $("#pvpSides").innerHTML=`<div class="card pvp-side"><h3>Lado A</h3><div class="pvp-members">${pvpMemberSelect("a",0)}${team?pvpMemberSelect("a",1):""}</div></div><div class="card pvp-side"><h3>Lado B</h3><div class="pvp-members">${pvpMemberSelect("b",0)}${team?pvpMemberSelect("b",1):""}</div></div>`;
-}
-$("#pvpFormat").onchange=renderPvpSides;
-$("#createPvpEvent").onclick=async()=>{
-  const name=$("#pvpEventName").value.trim(),format=$("#pvpFormat").value,team=format==="2v2";
-  if(!name){alert("Escribe el nombre del evento.");return}
-  const ids=$$("[data-pvp-member]").map(x=>x.value);
-  if(ids.some(x=>!x)){alert("Selecciona todos los participantes.");return}
-  if(new Set(ids).size!==ids.length){alert("No puedes repetir una cuenta en la misma pelea.");return}
-  const sideMembers=side=>ids.filter((_,i)=>team?(side==="a"?i<2:i>=2):(side==="a"?i===0:i===1)).map(id=>{const a=state.accounts.find(x=>x.id===id);return{id:a.id,name:a.username,type:"account"}});
-  const aMembers=sideMembers("a"),bMembers=sideMembers("b");
-  const config={event_kind:"pvp",groups:1,qualify_per_group:1,participant_count:2,third_place:false,repechage:false};
-  const {data:t,error:te}=await supabase.from("tournaments").insert({name,format,status:"active",config}).select().single();
-  if(te){alert(te.message);return}
-  const parts=[aMembers,bMembers].map((members,i)=>({tournament_id:t.id,display_name:members.map(m=>m.name).join(" + "),kind:team?"team":"account",members,group_no:1,seed_elo:participantEloFromMembers(members)}));
-  const {data:ps,error:pe}=await supabase.from("tournament_participants").insert(parts).select();
-  if(pe){alert(pe.message);await supabase.from("tournaments").delete().eq("id",t.id);return}
-  const {error:me}=await supabase.from("matches").insert({tournament_id:t.id,phase:"group",round_no:1,group_no:1,side_a:ps[0].id,side_b:ps[1].id,status:"scheduled"});
-  if(me){alert(me.message);return}
-  $("#pvpEventName").value="";await loadAll();renderPvpSides();
+const POKEMON_POOLS={
+  legendary:`Articuno,Zapdos,Moltres,Mewtwo,Raikou,Entei,Suicune,Lugia,Ho-Oh,Regirock,Regice,Registeel,Latias,Latios,Kyogre,Groudon,Rayquaza,Uxie,Mesprit,Azelf,Dialga,Palkia,Giratina,Cobalion,Terrakion,Virizion,Tornadus,Thundurus,Landorus,Reshiram,Zekrom,Kyurem,Xerneas,Yveltal,Zygarde,Tapu Koko,Tapu Lele,Tapu Bulu,Tapu Fini,Solgaleo,Lunala,Necrozma,Zacian,Zamazenta,Eternatus,Calyrex,Glastrier,Spectrier,Enamorus,Ogerpon,Koraidon,Miraidon`.split(','),
+  mythical:`Mew,Celebi,Jirachi,Deoxys,Phione,Manaphy,Darkrai,Shaymin,Arceus,Victini,Keldeo,Meloetta,Genesect,Diancie,Hoopa,Volcanion,Magearna,Marshadow,Zeraora,Meltan,Zarude,Pecharunt`.split(','),
+  sublegendary:`Kubfu,Wo-Chien,Chien-Pao,Ting-Lu,Chi-Yu,Okidogi,Munkidori,Fezandipiti`.split(','),
+  ultraBeast:`Nihilego,Buzzwole,Pheromosa,Xurkitree,Celesteela,Kartana,Guzzlord,Poipole,Stakataka,Blacephalon`.split(','),
+  paradox:`Gran Colmillo,Ferrodada,Colagrito,Ferropolilla,Furioseta,Ferrocuello,Melenaleteo,Ferropaladín,Colmilargo,Ferropúas,Pelarena,Ferromano,Melenatrueno,Ferrocanto,Electrofuria,Ferroverdor,Trepamuros,Ferromole`.split(','),
+  specialInitial:`Cosmog,Tipo Cero`.split(','),
+  veryHard:`Dratini,Larvitar,Bagon,Beldum,Gible,Deino,Goomy,Jangmo-o,Dreepy,Frigibax`.split(','),
+  hard:`Bulbasaur,Ivysaur,Venusaur,Charmander,Charmeleon,Charizard,Squirtle,Wartortle,Blastoise,Chikorita,Bayleef,Meganium,Cyndaquil,Quilava,Typhlosion,Totodile,Croconaw,Feraligatr,Treecko,Grovyle,Sceptile,Torchic,Combusken,Blaziken,Mudkip,Marshtomp,Swampert,Turtwig,Grotle,Torterra,Chimchar,Monferno,Infernape,Piplup,Prinplup,Empoleon,Snivy,Servine,Serperior,Tepig,Pignite,Emboar,Oshawott,Dewott,Samurott,Chespin,Quilladin,Chesnaught,Fennekin,Braixen,Delphox,Froakie,Frogadier,Greninja,Rowlet,Dartrix,Decidueye,Litten,Torracat,Incineroar,Popplio,Brionne,Primarina,Grookey,Thwackey,Rillaboom,Scorbunny,Raboot,Cinderace,Sobble,Drizzile,Inteleon,Sprigatito,Floragato,Meowscarada,Fuecoco,Crocalor,Skeledirge,Quaxly,Quaxwell,Quaquaval`.split(','),
+  common:`Pidgey,Rattata,Spearow,Ekans,Sandshrew,Nidoran♀,Nidoran♂,Vulpix,Zubat,Oddish,Paras,Venonat,Diglett,Meowth,Psyduck,Mankey,Growlithe,Poliwag,Abra,Machop,Bellsprout,Tentacool,Geodude,Ponyta,Slowpoke,Magnemite,Farfetch'd,Doduo,Seel,Grimer,Shellder,Gastly,Onix,Drowzee,Krabby,Voltorb,Exeggcute,Cubone,Lickitung,Koffing,Rhyhorn,Tangela,Horsea,Goldeen,Staryu,Scyther,Jynx,Electabuzz,Magmar,Pinsir,Tauros,Magikarp,Lapras,Eevee,Porygon,Omanyte,Kabuto,Sentret,Ledyba,Spinarak,Chinchou,Pichu,Cleffa,Igglybuff,Togepi,Natu,Mareep,Sudowoodo,Hoppip,Aipom,Sunkern,Yanma,Wooper,Murkrow,Misdreavus,Wobbuffet,Girafarig,Pineco,Dunsparce,Gligar,Snubbull,Qwilfish,Shuckle,Heracross,Teddiursa,Slugma,Swinub,Corsola,Remoraid,Delibird,Skarmory,Houndour,Phanpy,Stantler,Smeargle,Smoochum,Elekid,Magby,Miltank,Poochyena,Zigzagoon,Wurmple,Lotad,Seedot,Taillow,Wingull,Ralts,Surskit,Shroomish,Slakoth,Nincada,Whismur,Makuhita,Nosepass,Skitty,Sableye,Mawile,Aron,Meditite,Electrike,Plusle,Minun,Volbeat,Illumise,Roselia,Gulpin,Carvanha,Wailmer,Numel,Spoink,Cacnea,Swablu,Corphish,Baltoy,Lileep,Anorith,Feebas,Castform,Kecleon,Shuppet,Duskull,Tropius,Chimecho,Absol,Wynaut,Snorunt,Spheal,Clamperl,Relicanth,Luvdisc,Bidoof,Kricketot,Shinx,Cranidos,Shieldon,Burmy,Combee,Pachirisu,Buizel,Cherubi,Shellos,Drifloon,Buneary,Glameow,Stunky,Bronzor,Chatot,Spiritomb,Riolu,Hippopotas,Skorupi,Croagunk,Carnivine,Finneon,Mantyke,Snover,Rotom,Patrat,Lillipup,Purrloin,Pansage,Pansear,Panpour,Munna,Pidove,Blitzle,Roggenrola,Woobat,Drilbur,Audino,Timburr,Tympole,Throh,Sawk,Sewaddle,Venipede,Cottonee,Petilil,Basculin,Sandile,Darumaka,Maractus,Dwebble,Scraggy,Sigilyph,Yamask,Tirtouga,Archen,Trubbish,Minccino,Gothita,Solosis,Ducklett,Vanillite,Deerling,Emolga,Karrablast,Foongus,Frillish,Alomomola,Joltik,Ferroseed,Klink,Tynamo,Elgyem,Litwick,Axew,Cubchoo,Cryogonal,Shelmet,Stunfisk,Mienfoo,Druddigon,Golett,Pawniard,Bouffalant,Rufflet,Vullaby,Heatmor,Durant,Bunnelby,Fletchling,Scatterbug,Litleo,Flabébé,Skiddo,Pancham,Furfrou,Espurr,Honedge,Spritzee,Swirlix,Inkay,Binacle,Skrelp,Clauncher,Helioptile,Amaura,Hawlucha,Carbink,Phantump,Pumpkaboo,Bergmite,Noibat,Grubbin,Crabrawler,Oricorio,Cutiefly,Rockruff,Wishiwashi,Mareanie,Mudbray,Dewpider,Fomantis,Morelull,Salandit,Stufful,Bounsweet,Comfey,Oranguru,Passimian,Wimpod,Sandygast,Pyukumuku,Togedemaru,Bruxish,Drampa,Dhelmise,Skwovet,Rookidee,Blipbug,Nickit,Gossifleur,Wooloo,Chewtle,Yamper,Rolycoly,Applin,Silicobra,Cramorant,Arrokuda,Toxel,Sizzlipede,Clobbopus,Sinistea,Hatenna,Impidimp,Milcery,Falinks,Pincurchin,Snom,Stonjourner,Eiscue,Indeedee,Morpeko,Cufant,Dracozolt,Arctozolt,Dracovish,Arctovish,Lechonk,Tarountula,Nymble,Pawmi,Tandemaus,Fidough,Smoliv,Squawkabilly,Nacli,Charcadet,Tadbulb,Wattrel,Maschiff,Shroodle,Bramblin,Toedscool,Klawf,Capsakid,Rellor,Flittle,Tinkatink,Wiglett,Bombirdier,Finizen,Varoom,Cyclizar,Orthworm,Glimmet,Greavard,Flamigo,Cetoddle,Veluza,Dondozo,Tatsugiri`.split(',')
 };
-function renderPvpEvents(){
-  if(!$("#pvpEventList"))return;
-  const events=state.tournaments.filter(t=>t.config?.event_kind==="pvp");
-  $("#pvpEventList").innerHTML=events.map(t=>{
-    const m=tournamentMatches(t.id)[0];
-    return `<div class="panel"><div class="section-heading"><div><strong>${esc(t.name)}</strong><div class="muted">${esc(t.format)} · ${esc(t.status)}</div></div><button class="danger" data-delete-pvp="${t.id}">Eliminar evento</button></div>${m?matchCardAdmin(m):'<div class="muted">Sin pelea.</div>'}</div>`;
-  }).join("")||'<div class="muted">No hay peleas individuales creadas.</div>';
-  $$('[data-start-match]').forEach(b=>b.onclick=()=>startMatch(b.dataset.startMatch));
-  $$('[data-finish-match]').forEach(b=>b.onclick=()=>finishMatch(b.dataset.finishMatch,false));
-  $$('[data-walkover-a]').forEach(b=>b.onclick=()=>finishMatch(b.dataset.walkoverA,true,"a"));
-  $$('[data-walkover-b]').forEach(b=>b.onclick=()=>finishMatch(b.dataset.walkoverB,true,"b"));
-  $$('[data-save-schedule]').forEach(b=>b.onclick=()=>saveSchedule(b.dataset.saveSchedule));
-  $$('[data-save-odds]').forEach(b=>b.onclick=()=>saveManualOdds(b.dataset.saveOdds));
-  $$('[data-clear-odds]').forEach(b=>b.onclick=()=>clearManualOdds(b.dataset.clearOdds));
-  $$('[data-live-score]').forEach(input=>input.oninput=()=>queueLiveScoreSave(input.dataset.liveScore));
-  $$('[data-delete-pvp]').forEach(b=>b.onclick=async()=>{{await supabase.from("tournaments").delete().eq("id",b.dataset.deletePvp);await loadAll()}});
-}
-renderPvpSides();
-
-const pokemonPools=[
-  {category:"Legendario",rarity:"Casi imposible",weight:0.34,names:`Articuno, Zapdos, Moltres, Mewtwo, Raikou, Entei, Suicune, Lugia, Ho-Oh, Regirock, Regice, Registeel, Latias, Latios, Kyogre, Groudon, Rayquaza, Uxie, Mesprit, Azelf, Dialga, Palkia, Giratina, Cobalion, Terrakion, Virizion, Tornadus, Thundurus, Landorus, Reshiram, Zekrom, Kyurem, Xerneas, Yveltal, Zygarde, Tapu Koko, Tapu Lele, Tapu Bulu, Tapu Fini, Solgaleo, Lunala, Necrozma, Zacian, Zamazenta, Eternatus, Calyrex, Glastrier, Spectrier, Enamorus, Ogerpon, Koraidon, Miraidon`},
-  {category:"Mítico",rarity:"Casi imposible",weight:0.16,names:`Mew, Celebi, Jirachi, Deoxys, Phione, Manaphy, Darkrai, Shaymin, Arceus, Victini, Keldeo, Meloetta, Genesect, Diancie, Hoopa, Volcanion, Magearna, Marshadow, Zeraora, Meltan, Zarude, Pecharunt`},
-  {category:"Sublegendario",rarity:"Casi imposible",weight:0.08,names:`Kubfu, Wo-Chien, Chien-Pao, Ting-Lu, Chi-Yu, Okidogi, Munkidori, Fezandipiti`},
-  {category:"Ultraente",rarity:"Casi imposible",weight:0.08,names:`Nihilego, Buzzwole, Pheromosa, Xurkitree, Celesteela, Kartana, Guzzlord, Poipole, Stakataka, Blacephalon`},
-  {category:"Paradoja",rarity:"Casi imposible",weight:0.22,names:`Gran Colmillo, Ferrodada, Colagrito, Ferropolilla, Furioseta, Ferrocuello, Melenaleteo, Ferropaladín, Colmilargo, Ferropúas, Pelarena, Ferromano, Melenatrueno, Ferrocanto, Electrofuria, Ferroverdor, Trepamuros, Ferromole`},
-  {category:"Fase inicial específica",rarity:"Casi imposible",weight:0.12,names:`Cosmog, Tipo Cero`},
-  {category:"Pseudolegendario inicial",rarity:"Muy difícil",weight:4,names:`Dratini, Larvitar, Bagon, Beldum, Gible, Deino, Goomy, Jangmo-o, Dreepy, Frigibax`},
-  {category:"Inicial",rarity:"Difícil",weight:13,names:`Bulbasaur, Ivysaur, Venusaur, Charmander, Charmeleon, Charizard, Squirtle, Wartortle, Blastoise, Chikorita, Bayleef, Meganium, Cyndaquil, Quilava, Typhlosion, Totodile, Croconaw, Feraligatr, Treecko, Grovyle, Sceptile, Torchic, Combusken, Blaziken, Mudkip, Marshtomp, Swampert, Turtwig, Grotle, Torterra, Chimchar, Monferno, Infernape, Piplup, Prinplup, Empoleon, Snivy, Servine, Serperior, Tepig, Pignite, Emboar, Oshawott, Dewott, Samurott, Chespin, Quilladin, Chesnaught, Fennekin, Braixen, Delphox, Froakie, Frogadier, Greninja, Rowlet, Dartrix, Decidueye, Litten, Torracat, Incineroar, Popplio, Brionne, Primarina, Grookey, Thwackey, Rillaboom, Scorbunny, Raboot, Cinderace, Sobble, Drizzile, Inteleon, Sprigatito, Floragato, Meowscarada, Fuecoco, Crocalor, Skeledirge, Quaxly, Quaxwell, Quaquaval`},
-  {category:"Común",rarity:"Común",weight:82,names:`Pidgey, Rattata, Spearow, Ekans, Sandshrew, Nidoran♀, Nidoran♂, Vulpix, Zubat, Oddish, Paras, Venonat, Diglett, Meowth, Psyduck, Mankey, Growlithe, Poliwag, Abra, Machop, Bellsprout, Tentacool, Geodude, Ponyta, Slowpoke, Magnemite, Farfetch'd, Doduo, Seel, Grimer, Shellder, Gastly, Onix, Drowzee, Krabby, Voltorb, Exeggcute, Cubone, Lickitung, Koffing, Rhyhorn, Tangela, Horsea, Goldeen, Staryu, Scyther, Jynx, Electabuzz, Magmar, Pinsir, Tauros, Magikarp, Lapras, Eevee, Porygon, Omanyte, Kabuto, Sentret, Ledyba, Spinarak, Chinchou, Pichu, Cleffa, Igglybuff, Togepi, Natu, Mareep, Sudowoodo, Hoppip, Aipom, Sunkern, Yanma, Wooper, Murkrow, Misdreavus, Wobbuffet, Girafarig, Pineco, Dunsparce, Gligar, Snubbull, Qwilfish, Shuckle, Heracross, Teddiursa, Slugma, Swinub, Corsola, Remoraid, Delibird, Skarmory, Houndour, Phanpy, Stantler, Smeargle, Smoochum, Elekid, Magby, Miltank, Poochyena, Zigzagoon, Wurmple, Lotad, Seedot, Taillow, Wingull, Ralts, Surskit, Shroomish, Slakoth, Nincada, Whismur, Makuhita, Nosepass, Skitty, Sableye, Mawile, Aron, Meditite, Electrike, Plusle, Minun, Volbeat, Illumise, Roselia, Gulpin, Carvanha, Wailmer, Numel, Spoink, Cacnea, Swablu, Corphish, Baltoy, Lileep, Anorith, Feebas, Castform, Kecleon, Shuppet, Duskull, Tropius, Chimecho, Absol, Wynaut, Snorunt, Spheal, Clamperl, Relicanth, Luvdisc, Bidoof, Kricketot, Shinx, Cranidos, Shieldon, Burmy, Combee, Pachirisu, Buizel, Cherubi, Shellos, Drifloon, Buneary, Glameow, Stunky, Bronzor, Chatot, Spiritomb, Riolu, Hippopotas, Skorupi, Croagunk, Carnivine, Finneon, Mantyke, Snover, Rotom, Patrat, Lillipup, Purrloin, Pansage, Pansear, Panpour, Munna, Pidove, Blitzle, Roggenrola, Woobat, Drilbur, Audino, Timburr, Tympole, Throh, Sawk, Sewaddle, Venipede, Cottonee, Petilil, Basculin, Sandile, Darumaka, Maractus, Dwebble, Scraggy, Sigilyph, Yamask, Tirtouga, Archen, Trubbish, Minccino, Gothita, Solosis, Ducklett, Vanillite, Deerling, Emolga, Karrablast, Foongus, Frillish, Alomomola, Joltik, Ferroseed, Klink, Tynamo, Elgyem, Litwick, Axew, Cubchoo, Cryogonal, Shelmet, Stunfisk, Mienfoo, Druddigon, Golett, Pawniard, Bouffalant, Rufflet, Vullaby, Heatmor, Durant, Bunnelby, Fletchling, Scatterbug, Litleo, Flabébé, Skiddo, Pancham, Furfrou, Espurr, Honedge, Spritzee, Swirlix, Inkay, Binacle, Skrelp, Clauncher, Helioptile, Amaura, Hawlucha, Carbink, Phantump, Pumpkaboo, Bergmite, Noibat, Grubbin, Crabrawler, Oricorio, Cutiefly, Rockruff, Wishiwashi, Mareanie, Mudbray, Dewpider, Fomantis, Morelull, Salandit, Stufful, Bounsweet, Comfey, Oranguru, Passimian, Wimpod, Sandygast, Pyukumuku, Togedemaru, Bruxish, Drampa, Dhelmise, Skwovet, Rookidee, Blipbug, Nickit, Gossifleur, Wooloo, Chewtle, Yamper, Rolycoly, Applin, Silicobra, Cramorant, Arrokuda, Toxel, Sizzlipede, Clobbopus, Sinistea, Hatenna, Impidimp, Milcery, Falinks, Pincurchin, Snom, Stonjourner, Eiscue, Indeedee, Morpeko, Cufant, Dracozolt, Arctozolt, Dracovish, Arctovish, Lechonk, Tarountula, Nymble, Pawmi, Tandemaus, Fidough, Smoliv, Squawkabilly, Nacli, Charcadet, Tadbulb, Wattrel, Maschiff, Shroodle, Bramblin, Toedscool, Klawf, Capsakid, Rellor, Flittle, Tinkatink, Wiglett, Bombirdier, Finizen, Varoom, Cyclizar, Orthworm, Glimmet, Greavard, Flamigo, Cetoddle, Veluza, Dondozo, Tatsugiri`}
-].map(pool=>({...pool,names:pool.names.split(",").map(x=>x.trim()).filter(Boolean)}));
-const impossiblePokemonPools = pokemonPools.filter(pool => ["Legendario","Mítico","Ultraente","Paradoja"].includes(pool.category));
-const commonPokemonPool = pokemonPools.find(pool => pool.category === "Común");
-const starterPokemonPool = pokemonPools.find(pool => pool.category === "Inicial");
-
-function weekKeySunday(date=new Date()){
-  const bolivia=new Date(date.toLocaleString("en-US",{timeZone:CONFIG.DAILY_WHEEL_TIMEZONE}));
-  bolivia.setHours(0,0,0,0);
-  bolivia.setDate(bolivia.getDate()-bolivia.getDay());
-  return bolivia.toISOString().slice(0,10);
-}
-function seededNumber(seed){
-  let h=2166136261;
-  for(const ch of seed){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}
-  return ()=>{h+=0x6D2B79F5;let t=h;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967296};
-}
-function chooseSeeded(list,rng){return list[Math.floor(rng()*list.length)]}
-function randomRangeSeeded(min,max,rng,step=1){return Math.floor((min+Math.floor(rng()*((max-min)/step+1))*step));}
-function nextSundayLabel(){
-  const d=new Date();
-  const bolivia=new Date(d.toLocaleString("en-US",{timeZone:CONFIG.DAILY_WHEEL_TIMEZONE}));
-  const days=(7-bolivia.getDay())%7||7;
-  bolivia.setDate(bolivia.getDate()+days);bolivia.setHours(0,0,0,0);
-  return new Intl.DateTimeFormat("es-BO",{weekday:"long",day:"numeric",month:"long",timeZone:CONFIG.DAILY_WHEEL_TIMEZONE}).format(bolivia);
+const IMPOSSIBLE_CATEGORIES=[
+  {name:'Legendario',pool:POKEMON_POOLS.legendary},
+  {name:'Mítico',pool:POKEMON_POOLS.mythical},
+  {name:'Sublegendario',pool:POKEMON_POOLS.sublegendary},
+  {name:'Ultraente',pool:POKEMON_POOLS.ultraBeast},
+  {name:'Paradoja',pool:POKEMON_POOLS.paradox},
+  {name:'Fase inicial específica',pool:POKEMON_POOLS.specialInitial}
+];
+function randomItem(items,rng=Math.random){return items[Math.floor(rng()*items.length)]}
+function seededRandom(seedText){let h=2166136261;for(const ch of seedText){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return()=>{h+=0x6D2B79F5;let t=h;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
+function sundayWeekKey(){const now=new Date();const local=new Date(new Intl.DateTimeFormat('en-US',{timeZone:CONFIG.DAILY_WHEEL_TIMEZONE,year:'numeric',month:'2-digit',day:'2-digit'}).format(now));const day=local.getDay();local.setDate(local.getDate()-day);return local.toISOString().slice(0,10)}
+function impossiblePokemon(rng=Math.random){const category=randomItem(IMPOSSIBLE_CATEGORIES,rng);return {pokemon:randomItem(category.pool,rng),category:category.name,difficulty:'Casi imposible'}}
+function pokemonReward(category,rng=Math.random){
+  if(category==='common')return {pokemon:randomItem(POKEMON_POOLS.common,rng),category:'Común',difficulty:'Muy común'};
+  if(category==='hard')return {pokemon:randomItem(POKEMON_POOLS.hard,rng),category:'Inicial',difficulty:'Difícil'};
+  if(category==='veryHard')return {pokemon:randomItem(POKEMON_POOLS.veryHard,rng),category:'Pseudolegendario',difficulty:'Muy difícil'};
+  return impossiblePokemon(rng);
 }
 function weeklyDailyPrizes(){
-  const key=weekKeySunday();
-  const rng=seededNumber("pokepachanga:"+key);
-  const impossiblePool=chooseSeeded(impossiblePokemonPools,rng);
-  const impossibleName=chooseSeeded(impossiblePool.names,rng);
+  const rng=seededRandom('daily-wheel-'+sundayWeekKey());
+  const impossible=impossiblePokemon(rng);
   const candidates=[
-    ()=>{const amount=randomRangeSeeded(50,100,rng,10);return {label:`${amount} créditos`,tier:"Muy común",kind:"credits",credits:amount}},
-    ()=>{const name=chooseSeeded(commonPokemonPool.names,rng);return {label:name,subtitle:"Pokémon común",tier:"Muy común",kind:"reward"}},
-    ()=>({label:"5 Caramelos Raros",tier:"Muy común",kind:"reward"}),
-    ()=>{const amount=randomRangeSeeded(250,500,rng,50);return {label:`${amount} créditos`,tier:"Medio",kind:"credits",credits:amount}},
-    ()=>({label:"10 Caramelos Raros",tier:"Medio",kind:"reward"}),
-    ()=>{const name=chooseSeeded(starterPokemonPool.names,rng);return {label:name,subtitle:"Pokémon inicial",tier:"Medio",kind:"reward"}},
-    ()=>{const amount=randomRangeSeeded(5000,10000,rng,1000);return {label:`${amount} créditos`,tier:"Difícil",kind:"credits",credits:amount}},
-    ()=>({label:"40 Caramelos Raros",tier:"Difícil",kind:"reward"}),
-    ()=>({label:"Convertir un Pokémon en shiny",tier:"Difícil",kind:"reward"})
+    ()=>{const credits=50+Math.floor(rng()*51);return {label:`${credits} créditos`,credits,weight:1}},
+    ()=>{const p=pokemonReward('common',rng);return {label:`${p.pokemon} · ${p.category}`,rewardLabel:`${p.pokemon} — ${p.category} (${p.difficulty})`,weight:1}},
+    ()=>({label:'5 Caramelos Raros',weight:1}),
+    ()=>{const credits=250+Math.floor(rng()*251);return {label:`${credits} créditos`,credits,weight:1}},
+    ()=>({label:'10 Caramelos Raros',weight:1}),
+    ()=>{const p=pokemonReward('hard',rng);return {label:`${p.pokemon} · ${p.category}`,rewardLabel:`${p.pokemon} — ${p.category} (${p.difficulty})`,weight:1}},
+    ()=>{const credits=5000+Math.floor(rng()*5001);return {label:`${credits} créditos`,credits,weight:1}},
+    ()=>({label:'40 Caramelos Raros',weight:1}),
+    ()=>({label:'Convertir un Pokémon en shiny',weight:1})
   ];
-  const order=candidates.map((_,i)=>i).sort(()=>rng()-.5).slice(0,6);
-  const prizes=order.map(i=>candidates[i]());
-  prizes.push({label:impossibleName,subtitle:impossiblePool.category,tier:"Casi imposible",kind:"reward"});
-  return prizes.sort(()=>rng()-.5).map(x=>({...x,weight:1}));
+  for(let i=candidates.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[candidates[i],candidates[j]]=[candidates[j],candidates[i]]}
+  return [
+    {label:`${impossible.pokemon} · ${impossible.category}`,rewardLabel:`${impossible.pokemon} — ${impossible.category} (${impossible.difficulty})`,weight:1},
+    ...candidates.slice(0,6).map(fn=>fn())
+  ];
 }
-let dailyPrizes=weeklyDailyPrizes();
-const paidWheelCategories=[
-  {label:"Común",weight:82},{label:"Inicial",weight:13},{label:"Muy difícil",weight:4},{label:"Casi imposible",weight:1}
+const dailyPrizes=weeklyDailyPrizes();
+const paidCategories=[
+  {label:'Pokémon común',weight:82,key:'common'},
+  {label:'Pokémon inicial',weight:13,key:'hard'},
+  {label:'Pseudolegendario',weight:4,key:'veryHard'},
+  {label:'Legendario / mítico / especial',weight:1,key:'impossible'}
 ];
-function pickPokemon(){
-  const pool=weightedPick(pokemonPools);
-  const name=pool.names[Math.floor(Math.random()*pool.names.length)];
-  return {name,category:pool.category,rarity:pool.rarity,label:`${name} · ${pool.category}`};
-}
 function weightedPick(items){let r=Math.random()*items.reduce((sum,item)=>sum+item.weight,0);for(const item of items){r-=item.weight;if(r<=0)return item}return items[items.length-1]}
-function drawWheel(el,items){
-  if(!el||!items.length)return;
-  const colors=["#ef476f","#4d8dff","#33d17a","#ad7cff","#f5bd16","#ff8c42","#00a6a6"];
-  const step=360/items.length;
-  el.style.background=`conic-gradient(${items.map((item,i)=>`${colors[i%colors.length]} ${i*step}deg ${(i+1)*step}deg`).join(",")})`;
-  el.innerHTML=items.map((item,i)=>{
-    const angle=i*step+step/2;
-    const text=String(item.label||"").replace(/ Pokémon/i," PKM");
-    return `<span class="wheel-label" style="--angle:${angle}deg"><b>${esc(text)}</b></span>`;
-  }).join("");
-  const wrap=el.closest(".wheel-wrap");
-  if(wrap&&!wrap.querySelector(".wheel-pointer"))wrap.insertAdjacentHTML("afterbegin",'<div class="wheel-pointer" aria-hidden="true"></div>');
-}
-function renderDailyPrizeSlots(){
-  const root=$("#dailyPrizeSlots");if(!root)return;
-  root.innerHTML=dailyPrizes.map((prize,i)=>`<div class="prize-slot"><b>${i+1}. ${esc(prize.label)}</b><span>${esc(prize.subtitle||prize.tier)}</span></div>`).join("");
-  $("#weeklyRefreshLabel").textContent=`Premios de esta semana · se renuevan el ${nextSundayLabel()}`;
-}
-drawWheel($("#dailyWheel"),dailyPrizes);drawWheel($("#paidWheel"),paidWheelCategories);renderDailyPrizeSlots();
-async function spinVisual(el,items,duration=1600){
-  const pick=weightedPick(items),idx=items.indexOf(pick),step=360/items.length;
-  wheelRotation+=1080+(360-(idx*step+step/2));
-  el.style.transition=`transform ${duration}ms cubic-bezier(.2,.75,.15,1)`;
-  el.style.transform=`rotate(${wheelRotation}deg)`;
-  await new Promise(resolve=>setTimeout(resolve,duration+80));
-  return pick;
-}
+function createPaidPokemonPrize(){const category=weightedPick(paidCategories);const p=pokemonReward(category.key);return {label:`${p.pokemon} · ${p.category}`,rewardLabel:`${p.pokemon} — ${p.category} (${p.difficulty})`,weight:category.weight}}
+function drawWheel(el,items){const colors=['#ef476f','#4d8dff','#33d17a','#ad7cff','#f5bd16','#ff8c42','#00a6a6'];const step=360/items.length;el.style.background=`conic-gradient(${items.map((item,index)=>`${colors[index%colors.length]} ${index*step}deg ${(index+1)*step}deg`).join(',')})`}
+drawWheel($('#dailyWheel'),dailyPrizes);drawWheel($('#paidWheel'),paidCategories);
+async function spinVisual(el,items,forcedPick=null){const pick=forcedPick||weightedPick(items),idx=items.indexOf(pick),step=360/items.length;wheelRotation+=1440+(360-(idx*step+step/2));el.style.transform=`rotate(${wheelRotation}deg)`;await new Promise(resolve=>setTimeout(resolve,4300));return pick}
 async function updateDailyButton(){
-  const button=$("#spinDailyButton");if(!button)return;
-  if(!state.account){button.disabled=true;button.textContent="Inicia sesión para girar";return}
-  const {data}=await supabase.from("daily_spins").select("account_id").eq("account_id",state.account.id).eq("spin_date",todayBolivia()).maybeSingle();
-  button.disabled=!!data;button.textContent=data?"Giro diario usado":"Girar gratis";
+  if(!state.account){$('#spinDailyButton').disabled=true;return}
+  const {data}=await supabase.from('daily_spins').select('account_id').eq('account_id',state.account.id).eq('spin_date',todayBolivia()).maybeSingle();
+  $('#spinDailyButton').disabled=!!data;$('#spinDailyButton').textContent=data?'Giro diario usado':'Girar una vez al día';
 }
-async function grantPrize(prize,source){
-  if(prize.credits){
-    const current=state.accounts.find(a=>a.id===state.account.id)?.credits??state.account.credits;
-    const {error}=await supabase.from("accounts").update({credits:current+prize.credits}).eq("id",state.account.id);
-    if(error)throw error;
-  }else{
-    const label=prize.subtitle?`${prize.label} · ${prize.subtitle}`:prize.label;
-    const {error}=await supabase.from("rewards").insert({account_id:state.account.id,source,label});
-    if(error)throw error;
-  }
+async function grantWheelReward(prize,source){
+  const label=prize.rewardLabel||prize.label;
+  if(prize.credits){await supabase.from('accounts').update({credits:state.account.credits+prize.credits}).eq('id',state.account.id)}
+  else await supabase.from('rewards').insert({account_id:state.account.id,source,label});
+  return label;
 }
-$("#spinDailyButton").onclick=async()=>{
-  if(!state.account)return alert("Primero inicia sesión.");
-  const button=$("#spinDailyButton");button.disabled=true;
-  try{
-    const pick=await spinVisual($("#dailyWheel"),dailyPrizes);
-    const {error}=await supabase.from("daily_spins").insert({account_id:state.account.id,spin_date:todayBolivia(),reward_label:pick.label});
-    if(error)throw new Error("Ya giraste la ruleta diaria hoy.");
-    await grantPrize(pick,"Ruleta diaria");
-    $("#dailyResult").innerHTML=`<strong>${esc(pick.label)}</strong><span>${esc(pick.subtitle||pick.tier)}</span>`;
-    await loadAll();
-  }catch(error){alert(error.message||"No se pudo completar el giro.");await updateDailyButton()}
+$('#spinDailyButton').onclick=async()=>{
+  if(!state.account)return;
+  const pick=await spinVisual($('#dailyWheel'),dailyPrizes);
+  const label=pick.rewardLabel||pick.label;
+  const {error}=await supabase.from('daily_spins').insert({account_id:state.account.id,spin_date:todayBolivia(),reward_label:label});
+  if(error){alert('Ya giraste hoy.');return}
+  await grantWheelReward(pick,'Ruleta diaria');
+  $('#dailyResult').textContent='Premio: '+label;await loadAll();
 };
-async function paidPokemonSpin(animate=true){
-  if(animate)await spinVisual($("#paidWheel"),paidWheelCategories);
-  return pickPokemon();
+async function paidSpin(){
+  const category=weightedPick(paidCategories);
+  await spinVisual($('#paidWheel'),paidCategories,category);
+  return createPaidPokemonPrizeForCategory(category.key);
 }
-async function chargeCredits(amount){
-  const current=state.accounts.find(a=>a.id===state.account.id)?.credits??state.account.credits;
-  if(current<amount)throw new Error(`Necesitas ${money(amount)} créditos.`);
-  const {error}=await supabase.from("accounts").update({credits:current-amount}).eq("id",state.account.id);
-  if(error)throw error;
-}
-$("#spinPaidButton").onclick=async()=>{
-  if(!state.account)return alert("Primero inicia sesión.");
-  const button=$("#spinPaidButton");button.disabled=true;
-  try{
-    await chargeCredits(100);
-    const pokemon=await paidPokemonSpin(true);
-    await supabase.from("rewards").insert({account_id:state.account.id,source:"Ruleta de Pokémon",label:pokemon.label});
-    $("#paidResult").innerHTML=`<strong>${esc(pokemon.name)}</strong><span>${esc(pokemon.category)} · ${esc(pokemon.rarity)}</span>`;
-    $("#paidTenResults").innerHTML="";
-    await loadAll();
-  }catch(error){alert(error.message||"No se pudo realizar el tiro.")}finally{button.disabled=false}
+function createPaidPokemonPrizeForCategory(key){const p=pokemonReward(key);return {label:`${p.pokemon} · ${p.category}`,rewardLabel:`${p.pokemon} — ${p.category} (${p.difficulty})`}}
+$('#spinPaidButton').onclick=async()=>{
+  if(!state.account||state.account.credits<100){alert('Necesitas 100 créditos.');return}
+  await supabase.from('accounts').update({credits:state.account.credits-100}).eq('id',state.account.id);
+  pendingPaidReward=await paidSpin();$('#paidResult').textContent='Salió: '+pendingPaidReward.rewardLabel;$('#acceptPaidReward').hidden=false;await loadAll();
 };
-$("#spinPaidTenButton").onclick=async()=>{
-  if(!state.account)return alert("Primero inicia sesión.");
-  const button=$("#spinPaidTenButton");button.disabled=true;
-  try{
-    await chargeCredits(1000);
-    const results=Array.from({length:10},()=>pickPokemon());
-    const inserts=results.map(pokemon=>({account_id:state.account.id,source:"Ruleta de Pokémon · 10 tiros",label:pokemon.label}));
-    const {error}=await supabase.from("rewards").insert(inserts);if(error)throw error;
-    $("#paidResult").innerHTML=`<strong>10 tiros completados</strong><span>Resultados instantáneos</span>`;
-    $("#paidTenResults").innerHTML=results.map((pokemon,i)=>`<div class="card mini-result"><b>${i+1}. ${esc(pokemon.name)}</b><span>${esc(pokemon.category)} · ${esc(pokemon.rarity)}</span></div>`).join("");
-    await loadAll();
-  }catch(error){alert(error.message||"No se pudieron realizar los 10 tiros.")}finally{button.disabled=false}
+$('#spinPaidTenButton').onclick=async()=>{
+  if(!state.account||state.account.credits<1000){alert('Necesitas 1.000 créditos.');return}
+  $('#spinPaidTenButton').disabled=true;
+  await supabase.from('accounts').update({credits:state.account.credits-1000}).eq('id',state.account.id);
+  const rewards=Array.from({length:10},()=>createPaidPokemonPrize());
+  await supabase.from('rewards').insert(rewards.map(prize=>({account_id:state.account.id,source:'Ruleta Pokémon x10',label:prize.rewardLabel})));
+  $('#paidResult').innerHTML='<strong>10 resultados:</strong><br>'+rewards.map((prize,index)=>`${index+1}. ${esc(prize.rewardLabel)}`).join('<br>');
+  pendingPaidReward=null;$('#acceptPaidReward').hidden=true;$('#spinPaidTenButton').disabled=false;await loadAll();
+};
+$('#acceptPaidReward').onclick=async()=>{
+  if(!pendingPaidReward||!state.account)return;
+  await supabase.from('rewards').insert({account_id:state.account.id,source:'Ruleta Pokémon',label:pendingPaidReward.rewardLabel||pendingPaidReward.label});
+  pendingPaidReward=null;$('#acceptPaidReward').hidden=true;$('#paidResult').textContent='Recompensa añadida.';await loadAll();
 };
 function renderRewards(){
   const mine=state.account?state.rewards.filter(r=>r.account_id===state.account.id):[];
@@ -1135,22 +823,11 @@ function renderRewards(){
   $("#deliveryList").innerHTML=requested.map(r=>{const a=state.accounts.find(x=>x.id===r.account_id);return`<div class="card"><strong>${esc(a?.username||"Cuenta")}</strong><div>${esc(r.label)}</div><button data-deliver="${r.id}">Confirmar entrega</button></div>`}).join("")||'<div class="muted">Sin solicitudes.</div>';
   $$("[data-deliver]").forEach(b=>b.onclick=async()=>{await supabase.from("rewards").update({status:"claimed",claimed_at:new Date().toISOString()}).eq("id",b.dataset.deliver);loadAll()});
 }
-function closeDrawers(except=null){
-  for(const drawer of [$("#rewardDrawer"),$("#deliveryDrawer")])if(drawer&&drawer!==except)drawer.classList.remove("open");
-}
-$("#rewardDrawerButton")?.addEventListener("click",event=>{event.stopPropagation();const drawer=$("#rewardDrawer");const opening=!drawer.classList.contains("open");closeDrawers(opening?drawer:null);drawer.classList.toggle("open",opening)});
-$("#deliveryDrawerButton")?.addEventListener("click",event=>{event.stopPropagation();const drawer=$("#deliveryDrawer");const opening=!drawer.classList.contains("open");closeDrawers(opening?drawer:null);drawer.classList.toggle("open",opening)});
-[$("#rewardDrawer"),$("#deliveryDrawer")].forEach(drawer=>drawer?.addEventListener("click",event=>event.stopPropagation()));
-document.addEventListener("click",()=>closeDrawers());
-document.addEventListener("keydown",event=>{if(event.key==="Escape")closeDrawers()});
+$("#rewardDrawerButton").onclick=()=>$("#rewardDrawer").classList.toggle("open");
+$("#deliveryDrawerButton").onclick=()=>$("#deliveryDrawer").classList.toggle("open");
 
-let realtimeReloadTimer=null;
-function queueRealtimeReload(){
-  clearTimeout(realtimeReloadTimer);
-  realtimeReloadTimer=setTimeout(()=>loadAll(),180);
-}
 for(const table of ["accounts","tournaments","tournament_participants","matches","bets","rewards","daily_spins","rankings"]){
-  supabase.channel("rt-"+table).on("postgres_changes",{event:"*",schema:"public",table},queueRealtimeReload).subscribe();
+  supabase.channel("rt-"+table).on("postgres_changes",{event:"*",schema:"public",table},()=>loadAll()).subscribe();
 }
 const saved=localStorage.getItem("liga_account");
 if(saved){const {data}=await supabase.from("accounts").select("*").eq("id",saved).maybeSingle();state.account=data||null}

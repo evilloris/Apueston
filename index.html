@@ -204,9 +204,16 @@
         <button id="fairPairingButton" class="secondary">⚖️ Emparejamiento justo por ELO</button>
         <button id="saveParticipantsButton">Guardar participantes</button>
       </div>
-      <p class="muted">Selecciona una cuenta o un bot en cada tarjeta. En 2v2 se eligen dos integrantes por equipo.</p>
-      <div id="participantCards" class="grid" style="margin-top:14px"></div>
-      <button id="generateFixture" style="margin-top:12px">Generar peleas de grupos</button>
+      <div id="tournamentEntrantSetup" hidden>
+        <p id="tournamentEntrantHelp" class="muted"></p>
+        <div id="tournamentEntrantCards" class="grid" style="margin-top:14px"></div>
+        <button id="confirmTournamentEntrants" style="margin-top:12px">Confirmar participantes y equilibrar</button>
+      </div>
+      <div id="tournamentTeamSetup" hidden>
+        <p class="muted">Los equipos y grupos se ordenan automáticamente por ELO. Después puedes editar cualquier tarjeta manualmente.</p>
+        <div id="participantCards" class="grid" style="margin-top:14px"></div>
+        <button id="generateFixture" style="margin-top:12px">Generar peleas de grupos</button>
+      </div>
     </div>
 
     <div class="panel" id="matchAdminPanel" hidden>

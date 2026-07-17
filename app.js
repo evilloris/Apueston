@@ -513,6 +513,50 @@ function participantEloFromMembers(members){
   return Math.round(members.reduce((sum,m)=>sum+rankingFor(botOrAccountName(m)).elo,0)/members.length);
 }
 
+const tournamentDraftParticipants=new Map();
+function entrantCardHtml(index,existing={}){
+  const isBot=existing.type==="bot";
+  return `<div class="card tournament-entrant" data-entrant="${index}">
+    <strong>Participante ${index+1}</strong>
+    <label>Tipo</label>
+    <select data-entrant-kind><option value="account" ${!isBot?"selected":""}>Cuenta creada</option><option value="bot" ${isBot?"selected":""}>Bot</option></select>
+    <div data-entrant-account-wrap ${isBot?"hidden":""}><label>Cuenta</label><select data-entrant-account>${accountOptions(existing.id||"")}</select></div>
+    <div data-entrant-bot-wrap ${!isBot?"hidden":""}><label>Nombre del bot</label><input data-entrant-bot value="${esc(isBot?existing.name||"":"")}" placeholder="Ej: Bot Brock"></div>
+  </div>`;
+}
+function renderTournamentEntrantSetup(t){
+  const total=t.format==="2v2"?(t.config?.participant_count||2)*2:(t.config?.participant_count||2);
+  $("#tournamentEntrantHelp").textContent=t.format==="2v2"?`Ingresa los ${total} jugadores. Se crearán ${t.config?.participant_count||2} equipos de dos con promedios de ELO lo más parecidos posible.`:`Ingresa los ${total} jugadores. Se distribuirán automáticamente por ELO entre los grupos.`;
+  $("#tournamentEntrantCards").innerHTML=Array.from({length:total},(_,i)=>entrantCardHtml(i)).join("");
+  $$('[data-entrant-kind]',"#tournamentEntrantCards").forEach(sel=>sel.onchange=()=>{const card=sel.closest('[data-entrant]');card.querySelector('[data-entrant-account-wrap]').hidden=sel.value==="bot";card.querySelector('[data-entrant-bot-wrap]').hidden=sel.value!=="bot";});
+  $("#tournamentEntrantSetup").hidden=false;$("#tournamentTeamSetup").hidden=true;
+}
+function readTournamentEntrants(){
+  const used=new Set(),members=[];
+  for(const card of $$('[data-entrant]',"#tournamentEntrantCards")){
+    const kind=card.querySelector('[data-entrant-kind]').value;
+    if(kind==="account"){
+      const id=card.querySelector('[data-entrant-account]').value,account=state.accounts.find(a=>a.id===id);
+      if(!account)throw new Error(`Selecciona una cuenta en participante ${+card.dataset.entrant+1}.`);
+      const key='a:'+id;if(used.has(key))throw new Error(`La cuenta ${account.username} está repetida.`);used.add(key);members.push({id,name:account.username,type:'account'});
+    }else{
+      const name=card.querySelector('[data-entrant-bot]').value.trim();if(!name)throw new Error(`Escribe el nombre del bot en participante ${+card.dataset.entrant+1}.`);
+      const key='b:'+name.toLowerCase();if(used.has(key))throw new Error(`El bot ${name} está repetido.`);used.add(key);members.push({name,type:'bot'});
+    }
+  }
+  return members;
+}
+function snakeGroupAssignments(count,groups){const result=[];let g=1,dir=1;for(let i=0;i<count;i++){result.push(g);if(groups>1){g+=dir;if(g>groups){g=groups;dir=-1}else if(g<1){g=1;dir=1}}}return result;}
+function balancedTournamentParticipants(t,members){
+  const groups=t.config?.groups||1,ranked=[...members].sort((a,b)=>rankingFor(b.name).elo-rankingFor(a.name).elo);let participants;
+  if(t.format==="2v2"){
+    participants=[];while(ranked.length){const high=ranked.shift(),low=ranked.pop();participants.push({members:[high,low]});}
+    participants.sort((a,b)=>participantEloFromMembers(b.members)-participantEloFromMembers(a.members));
+  }else participants=ranked.map(member=>({members:[member]}));
+  const assignments=snakeGroupAssignments(participants.length,groups);
+  return participants.map((p,i)=>({display_name:t.format==="2v2"?p.members.map(m=>m.name).join(' + '):p.members[0].name,kind:t.format==="2v2"?'team':p.members[0].type,members:p.members,group_no:assignments[i],seed_elo:participantEloFromMembers(p.members)}));
+}
+
 $("#createTournament").onclick=async()=>{
   const name=$("#tournamentName").value.trim();
   const format=$("#tournamentFormat").value;
@@ -705,14 +749,12 @@ function participantCardHtml(t,index,existing){
 }
 function renderParticipantCards(){
   const tid=$("#adminTournamentSelect").value,t=tournamentById(tid);if(!t)return;
-  const existing=tournamentParticipants(tid);
-  const count=t.config?.participant_count||existing.length||2;
-  $("#participantCards").innerHTML=Array.from({length:count},(_,i)=>participantCardHtml(t,i,existing[i])).join("");
-  $$("[data-member-kind]").forEach(sel=>sel.onchange=()=>{
-    const block=sel.closest("[data-member]");
-    block.querySelector(`[data-account-wrap="${sel.dataset.memberKind}"]`).hidden=sel.value==="bot";
-    block.querySelector(`[data-bot-wrap="${sel.dataset.memberKind}"]`).hidden=sel.value!=="bot";
-  });
+  const existing=tournamentParticipants(tid),draft=tournamentDraftParticipants.get(tid)||[];
+  if(!existing.length&&!draft.length){renderTournamentEntrantSetup(t);return}
+  const source=existing.length?existing:draft,count=t.config?.participant_count||source.length||2;
+  $("#participantCards").innerHTML=Array.from({length:count},(_,i)=>participantCardHtml(t,i,source[i])).join("");
+  $$('[data-member-kind]').forEach(sel=>sel.onchange=()=>{const block=sel.closest('[data-member]');block.querySelector(`[data-account-wrap="${sel.dataset.memberKind}"]`).hidden=sel.value==="bot";block.querySelector(`[data-bot-wrap="${sel.dataset.memberKind}"]`).hidden=sel.value!=="bot";});
+  $("#tournamentEntrantSetup").hidden=true;$("#tournamentTeamSetup").hidden=false;
 }
 
 function readParticipantCards(){
@@ -744,6 +786,12 @@ function readParticipantCards(){
   return items;
 }
 
+$("#confirmTournamentEntrants").onclick=()=>{
+  const tid=$("#adminTournamentSelect").value,t=tournamentById(tid);if(!t)return;
+  let members;try{members=readTournamentEntrants()}catch(e){alert(e.message);return}
+  tournamentDraftParticipants.set(tid,balancedTournamentParticipants(t,members));renderParticipantCards();
+};
+
 $("#saveParticipantsButton").onclick=async()=>{
   const tid=$("#adminTournamentSelect").value;if(!tid)return;
   let items;try{items=readParticipantCards()}catch(e){alert(e.message);return}
@@ -751,33 +799,15 @@ $("#saveParticipantsButton").onclick=async()=>{
   const rows=items.map(x=>({...x,tournament_id:tid}));
   const {error}=await supabase.from("tournament_participants").insert(rows);
   if(error){alert(error.message);return}
+  tournamentDraftParticipants.delete(tid);
   await loadAll();$("#adminTournamentSelect").value=tid;renderParticipantCards();
   alert("Participantes guardados.");
 };
 
 $("#fairPairingButton").onclick=()=>{
-  const cards=$$("[data-slot]","#participantCards");
-  const entries=cards.map(card=>{
-    const names=[];
-    for(const block of $$("[data-member]",card)){
-      const idx=block.dataset.member;
-      const kind=block.querySelector(`[data-member-kind="${idx}"]`).value;
-      if(kind==="account"){
-        const a=state.accounts.find(x=>x.id===block.querySelector(`[data-member-account="${idx}"]`).value);
-        if(a)names.push(a.username);
-      }else{
-        const n=block.querySelector(`[data-member-bot="${idx}"]`).value.trim();if(n)names.push(n);
-      }
-    }
-    const elo=names.length?names.reduce((s,n)=>s+rankingFor(n).elo,0)/names.length:1000;
-    return {card,elo};
-  }).sort((a,b)=>b.elo-a.elo);
-  const groups=tournamentById($("#adminTournamentSelect").value)?.config?.groups||1;
-  let g=1,dir=1;
-  entries.forEach(e=>{
-    e.card.querySelector("[data-slot-group]").value=g;
-    if(groups>1){g+=dir;if(g>groups){g=groups;dir=-1}else if(g<1){g=1;dir=1}}
-  });
+  const tid=$("#adminTournamentSelect").value,t=tournamentById(tid);if(!t)return;
+  let items;try{items=readParticipantCards()}catch(e){alert(e.message);return}
+  tournamentDraftParticipants.set(tid,balancedTournamentParticipants(t,items.flatMap(x=>x.members)));renderParticipantCards();
 };
 
 $("#generateFixture").onclick=async()=>{

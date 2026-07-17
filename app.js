@@ -1105,29 +1105,36 @@ const paidCategories=[
 ];
 function weightedPick(items){let r=Math.random()*items.reduce((sum,item)=>sum+item.weight,0);for(const item of items){r-=item.weight;if(r<=0)return item}return items[items.length-1]}
 function createPaidPokemonPrize(){const category=weightedPick(paidCategories);return createPaidPokemonPrizeForCategory(category.key)}
-
 function drawWheel(el,items){
-  el.className='text-reel';
-  el.innerHTML=items.concat(items).map(i=>`<div class="reel-item">${esc(i.label)}</div>`).join('');
   const list=$('#dailyPrizeList');
   if(list)list.innerHTML=items.map((item,index)=>`<div class="daily-prize-chip"><strong>${index+1}.</strong> ${esc(item.label)}</div>`).join('');
 }
 drawWheel($('#dailyWheel'),dailyPrizes);
 async function spinVisual(el,items,forcedPick=null){
- const pick=forcedPick||weightedPick(items);
- const idx=items.indexOf(pick);
- const h=42;
- const loops=items.length*6;
- el.style.transition='none';
- el.style.transform='translateY(0)';
- void el.offsetHeight;
- const target=-(loops+idx)*h;
- el.style.transition='transform 4.3s cubic-bezier(.08,.9,.2,1)';
- el.style.transform=`translateY(${target}px)`;
- await new Promise(r=>setTimeout(r,4300));
- return pick;
+  const pick=forcedPick||weightedPick(items);
+  await animatePaidPokemonReel({pokemon:pick.label,category:'',categoryKey:'common'});
+  return pick;
 }
-
+async function updateDailyButton(){
+  if(!state.account){$('#spinDailyButton').disabled=true;return}
+  const {data}=await supabase.from('daily_spins').select('account_id').eq('account_id',state.account.id).eq('spin_date',todayBolivia()).maybeSingle();
+  $('#spinDailyButton').disabled=!!data;$('#spinDailyButton').textContent=data?'Giro diario usado':'Girar una vez al día';
+}
+async function grantWheelReward(prize,source){
+  const label=prize.rewardLabel||prize.label;
+  if(prize.credits){await supabase.from('accounts').update({credits:state.account.credits+prize.credits}).eq('id',state.account.id)}
+  else await supabase.from('rewards').insert({account_id:state.account.id,source,label});
+  return label;
+}
+$('#spinDailyButton').onclick=async()=>{
+  if(!state.account)return;
+  const pick=await spinVisual($('#dailyWheel'),dailyPrizes);
+  const label=pick.rewardLabel||pick.label;
+  const {error}=await supabase.from('daily_spins').insert({account_id:state.account.id,spin_date:todayBolivia(),reward_label:label});
+  if(error){alert('Ya giraste hoy.');return}
+  await grantWheelReward(pick,'Ruleta diaria');
+  $('#dailyResult').textContent='Premio: '+label;await loadAll();
+};
 const PAID_CATEGORY_CLASSES=['category-legendary','category-mythical','category-sublegendary','category-ultrabeast','category-paradox','category-special','category-pseudo','category-starter','category-common'];
 function setPaidReelPokemon(prize,previousName='',nextName=''){
   const categoryEl=$('#reelPokemonCategory');

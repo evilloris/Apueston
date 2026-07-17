@@ -1105,29 +1105,26 @@ const paidCategories=[
 ];
 function weightedPick(items){let r=Math.random()*items.reduce((sum,item)=>sum+item.weight,0);for(const item of items){r-=item.weight;if(r<=0)return item}return items[items.length-1]}
 function createPaidPokemonPrize(){const category=weightedPick(paidCategories);return createPaidPokemonPrizeForCategory(category.key)}
-function drawWheel(el,items){
-  const colors=['#ef476f','#4d8dff','#33d17a','#ad7cff','#f5bd16','#ff8c42','#00a6a6'],step=360/items.length;
-  el.style.background=`conic-gradient(${items.map((item,index)=>`${colors[index%colors.length]} ${index*step}deg ${(index+1)*step}deg`).join(',')})`;
-  el.innerHTML=items.map((item,index)=>`<div class="daily-wheel-label" style="transform:rotate(${index*step+step/2}deg)"><span>${esc(item.label)}</span></div>`).join('');
-  const list=$('#dailyPrizeList');if(list)list.innerHTML=items.map((item,index)=>`<div class="daily-prize-chip"><strong>${index+1}.</strong> ${esc(item.label)}</div>`).join('');
+function randomDailyPreview(){return randomItem(dailyPrizes)}
+function setDailyReelPrize(prize,previousLabel='',nextLabel=''){
+  $('#dailyReelPrizeName').textContent=prize.label;
+  $('#dailyReelPrevious').textContent=previousLabel||randomDailyPreview().label;
+  $('#dailyReelNext').textContent=nextLabel||randomDailyPreview().label;
 }
-drawWheel($('#dailyWheel'),dailyPrizes);
-async function spinVisual(el,items,forcedPick=null){
-const pick=forcedPick||weightedPick(items);
-const names=[...el.querySelectorAll('.wheel-segment')];
-let index=0;
-const delays=[40,45,50,55,60,70,80,95,110,130,160,200,260,340];
-for(const d of delays){
- names.forEach(n=>n.style.background='');
- names[index%names.length].style.background='#2d6cdf';
- index++;
- await new Promise(r=>setTimeout(r,d));
-}
-const final=items.indexOf(pick);
-names.forEach(n=>n.style.background='');
-if(names[final]) names[final].style.background='#2ecc71';
-await new Promise(r=>setTimeout(r,300));
-return pick;
+async function animateDailyPrizeReel(finalPrize){
+  const reel=$('#dailyPrizeReel');
+  reel.classList.remove('finished');reel.classList.add('spinning');
+  const delays=[45,45,45,45,50,50,55,55,60,65,70,75,85,95,110,130,155,185,220,270,330,420];
+  let previous=randomDailyPreview();
+  for(const delay of delays){
+    const current=randomDailyPreview(),next=randomDailyPreview();
+    setDailyReelPrize(current,previous.label,next.label);
+    previous=current;
+    await wait(delay);
+  }
+  setDailyReelPrize(finalPrize,previous.label,finalPrize.label);
+  reel.classList.remove('spinning');reel.classList.add('finished');
+  await wait(250);
 }
 async function updateDailyButton(){
   if(!state.account){$('#spinDailyButton').disabled=true;return}
@@ -1142,10 +1139,13 @@ async function grantWheelReward(prize,source){
 }
 $('#spinDailyButton').onclick=async()=>{
   if(!state.account)return;
-  const pick=await spinVisual($('#dailyWheel'),dailyPrizes);
+  const button=$('#spinDailyButton');
+  button.disabled=true;
+  const pick=weightedPick(dailyPrizes);
+  await animateDailyPrizeReel(pick);
   const label=pick.rewardLabel||pick.label;
   const {error}=await supabase.from('daily_spins').insert({account_id:state.account.id,spin_date:todayBolivia(),reward_label:label});
-  if(error){alert('Ya giraste hoy.');return}
+  if(error){alert('Ya giraste hoy.');await updateDailyButton();return}
   await grantWheelReward(pick,'Ruleta diaria');
   $('#dailyResult').textContent='Premio: '+label;await loadAll();
 };

@@ -91,8 +91,13 @@
     <div class="panel">
       <h2>Ruleta diaria</h2>
       <p class="muted">Un giro gratuito por día. Tiene 7 premios y se renueva cada domingo; siempre incluye un Pokémon casi imposible.</p>
-      <div class="wheel-wrap"><div id="dailyWheel" class="wheel"></div><div class="wheel-center">DIARIA</div></div>
-      <div id="dailyPrizeList" class="daily-prize-list"></div>
+      <div id="dailyPrizeReel" class="pokemon-reel daily-prize-reel" aria-live="polite">
+        <div class="reel-line reel-line-faded" id="dailyReelPrevious">Premio diario</div>
+        <div class="reel-selector">
+          <strong id="dailyReelPrizeName">Pulsa girar</strong>
+        </div>
+        <div class="reel-line reel-line-faded" id="dailyReelNext">Un giro gratuito por día</div>
+      </div>
       <button id="spinDailyButton" style="width:100%;margin-top:16px">Girar una vez al día</button>
       <div id="dailyResult" class="card" style="margin-top:12px">Sin girar.</div>
     </div>

@@ -721,21 +721,21 @@ const POKEMON_POOLS={
   common:`Pidgey,Rattata,Spearow,Ekans,Sandshrew,Nidoran♀,Nidoran♂,Vulpix,Zubat,Oddish,Paras,Venonat,Diglett,Meowth,Psyduck,Mankey,Growlithe,Poliwag,Abra,Machop,Bellsprout,Tentacool,Geodude,Ponyta,Slowpoke,Magnemite,Farfetch'd,Doduo,Seel,Grimer,Shellder,Gastly,Onix,Drowzee,Krabby,Voltorb,Exeggcute,Cubone,Lickitung,Koffing,Rhyhorn,Tangela,Horsea,Goldeen,Staryu,Scyther,Jynx,Electabuzz,Magmar,Pinsir,Tauros,Magikarp,Lapras,Eevee,Porygon,Omanyte,Kabuto,Sentret,Ledyba,Spinarak,Chinchou,Pichu,Cleffa,Igglybuff,Togepi,Natu,Mareep,Sudowoodo,Hoppip,Aipom,Sunkern,Yanma,Wooper,Murkrow,Misdreavus,Wobbuffet,Girafarig,Pineco,Dunsparce,Gligar,Snubbull,Qwilfish,Shuckle,Heracross,Teddiursa,Slugma,Swinub,Corsola,Remoraid,Delibird,Skarmory,Houndour,Phanpy,Stantler,Smeargle,Smoochum,Elekid,Magby,Miltank,Poochyena,Zigzagoon,Wurmple,Lotad,Seedot,Taillow,Wingull,Ralts,Surskit,Shroomish,Slakoth,Nincada,Whismur,Makuhita,Nosepass,Skitty,Sableye,Mawile,Aron,Meditite,Electrike,Plusle,Minun,Volbeat,Illumise,Roselia,Gulpin,Carvanha,Wailmer,Numel,Spoink,Cacnea,Swablu,Corphish,Baltoy,Lileep,Anorith,Feebas,Castform,Kecleon,Shuppet,Duskull,Tropius,Chimecho,Absol,Wynaut,Snorunt,Spheal,Clamperl,Relicanth,Luvdisc,Bidoof,Kricketot,Shinx,Cranidos,Shieldon,Burmy,Combee,Pachirisu,Buizel,Cherubi,Shellos,Drifloon,Buneary,Glameow,Stunky,Bronzor,Chatot,Spiritomb,Riolu,Hippopotas,Skorupi,Croagunk,Carnivine,Finneon,Mantyke,Snover,Rotom,Patrat,Lillipup,Purrloin,Pansage,Pansear,Panpour,Munna,Pidove,Blitzle,Roggenrola,Woobat,Drilbur,Audino,Timburr,Tympole,Throh,Sawk,Sewaddle,Venipede,Cottonee,Petilil,Basculin,Sandile,Darumaka,Maractus,Dwebble,Scraggy,Sigilyph,Yamask,Tirtouga,Archen,Trubbish,Minccino,Gothita,Solosis,Ducklett,Vanillite,Deerling,Emolga,Karrablast,Foongus,Frillish,Alomomola,Joltik,Ferroseed,Klink,Tynamo,Elgyem,Litwick,Axew,Cubchoo,Cryogonal,Shelmet,Stunfisk,Mienfoo,Druddigon,Golett,Pawniard,Bouffalant,Rufflet,Vullaby,Heatmor,Durant,Bunnelby,Fletchling,Scatterbug,Litleo,Flabébé,Skiddo,Pancham,Furfrou,Espurr,Honedge,Spritzee,Swirlix,Inkay,Binacle,Skrelp,Clauncher,Helioptile,Amaura,Hawlucha,Carbink,Phantump,Pumpkaboo,Bergmite,Noibat,Grubbin,Crabrawler,Oricorio,Cutiefly,Rockruff,Wishiwashi,Mareanie,Mudbray,Dewpider,Fomantis,Morelull,Salandit,Stufful,Bounsweet,Comfey,Oranguru,Passimian,Wimpod,Sandygast,Pyukumuku,Togedemaru,Bruxish,Drampa,Dhelmise,Skwovet,Rookidee,Blipbug,Nickit,Gossifleur,Wooloo,Chewtle,Yamper,Rolycoly,Applin,Silicobra,Cramorant,Arrokuda,Toxel,Sizzlipede,Clobbopus,Sinistea,Hatenna,Impidimp,Milcery,Falinks,Pincurchin,Snom,Stonjourner,Eiscue,Indeedee,Morpeko,Cufant,Dracozolt,Arctozolt,Dracovish,Arctovish,Lechonk,Tarountula,Nymble,Pawmi,Tandemaus,Fidough,Smoliv,Squawkabilly,Nacli,Charcadet,Tadbulb,Wattrel,Maschiff,Shroodle,Bramblin,Toedscool,Klawf,Capsakid,Rellor,Flittle,Tinkatink,Wiglett,Bombirdier,Finizen,Varoom,Cyclizar,Orthworm,Glimmet,Greavard,Flamigo,Cetoddle,Veluza,Dondozo,Tatsugiri`.split(',')
 };
 const IMPOSSIBLE_CATEGORIES=[
-  {name:'Legendario',pool:POKEMON_POOLS.legendary},
-  {name:'Mítico',pool:POKEMON_POOLS.mythical},
-  {name:'Sublegendario',pool:POKEMON_POOLS.sublegendary},
-  {name:'Ultraente',pool:POKEMON_POOLS.ultraBeast},
-  {name:'Paradoja',pool:POKEMON_POOLS.paradox},
-  {name:'Fase inicial específica',pool:POKEMON_POOLS.specialInitial}
+  {name:'Legendario',key:'legendary',pool:POKEMON_POOLS.legendary},
+  {name:'Mítico',key:'mythical',pool:POKEMON_POOLS.mythical},
+  {name:'Sublegendario',key:'sublegendary',pool:POKEMON_POOLS.sublegendary},
+  {name:'Ultraente',key:'ultrabeast',pool:POKEMON_POOLS.ultraBeast},
+  {name:'Paradoja',key:'paradox',pool:POKEMON_POOLS.paradox},
+  {name:'Fase inicial específica',key:'special',pool:POKEMON_POOLS.specialInitial}
 ];
 function randomItem(items,rng=Math.random){return items[Math.floor(rng()*items.length)]}
 function seededRandom(seedText){let h=2166136261;for(const ch of seedText){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return()=>{h+=0x6D2B79F5;let t=h;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
 function sundayWeekKey(){const now=new Date();const local=new Date(new Intl.DateTimeFormat('en-US',{timeZone:CONFIG.DAILY_WHEEL_TIMEZONE,year:'numeric',month:'2-digit',day:'2-digit'}).format(now));const day=local.getDay();local.setDate(local.getDate()-day);return local.toISOString().slice(0,10)}
-function impossiblePokemon(rng=Math.random){const category=randomItem(IMPOSSIBLE_CATEGORIES,rng);return {pokemon:randomItem(category.pool,rng),category:category.name,difficulty:'Casi imposible'}}
+function impossiblePokemon(rng=Math.random){const category=randomItem(IMPOSSIBLE_CATEGORIES,rng);return {pokemon:randomItem(category.pool,rng),category:category.name,categoryKey:category.key,difficulty:'Casi imposible'}}
 function pokemonReward(category,rng=Math.random){
-  if(category==='common')return {pokemon:randomItem(POKEMON_POOLS.common,rng),category:'Común',difficulty:'Muy común'};
-  if(category==='hard')return {pokemon:randomItem(POKEMON_POOLS.hard,rng),category:'Inicial',difficulty:'Difícil'};
-  if(category==='veryHard')return {pokemon:randomItem(POKEMON_POOLS.veryHard,rng),category:'Pseudolegendario',difficulty:'Muy difícil'};
+  if(category==='common')return {pokemon:randomItem(POKEMON_POOLS.common,rng),category:'Común',categoryKey:'common',difficulty:'Muy común'};
+  if(category==='hard')return {pokemon:randomItem(POKEMON_POOLS.hard,rng),category:'Inicial',categoryKey:'starter',difficulty:'Difícil'};
+  if(category==='veryHard')return {pokemon:randomItem(POKEMON_POOLS.veryHard,rng),category:'Pseudolegendario',categoryKey:'pseudo',difficulty:'Muy difícil'};
   return impossiblePokemon(rng);
 }
 function weeklyDailyPrizes(){
@@ -766,9 +766,9 @@ const paidCategories=[
   {label:'Legendario / mítico / especial',weight:1,key:'impossible'}
 ];
 function weightedPick(items){let r=Math.random()*items.reduce((sum,item)=>sum+item.weight,0);for(const item of items){r-=item.weight;if(r<=0)return item}return items[items.length-1]}
-function createPaidPokemonPrize(){const category=weightedPick(paidCategories);const p=pokemonReward(category.key);return {label:`${p.pokemon} · ${p.category}`,rewardLabel:`${p.pokemon} — ${p.category} (${p.difficulty})`,weight:category.weight}}
+function createPaidPokemonPrize(){const category=weightedPick(paidCategories);return createPaidPokemonPrizeForCategory(category.key)}
 function drawWheel(el,items){const colors=['#ef476f','#4d8dff','#33d17a','#ad7cff','#f5bd16','#ff8c42','#00a6a6'];const step=360/items.length;el.style.background=`conic-gradient(${items.map((item,index)=>`${colors[index%colors.length]} ${index*step}deg ${(index+1)*step}deg`).join(',')})`}
-drawWheel($('#dailyWheel'),dailyPrizes);drawWheel($('#paidWheel'),paidCategories);
+drawWheel($('#dailyWheel'),dailyPrizes);
 async function spinVisual(el,items,forcedPick=null){const pick=forcedPick||weightedPick(items),idx=items.indexOf(pick),step=360/items.length;wheelRotation+=1440+(360-(idx*step+step/2));el.style.transform=`rotate(${wheelRotation}deg)`;await new Promise(resolve=>setTimeout(resolve,4300));return pick}
 async function updateDailyButton(){
   if(!state.account){$('#spinDailyButton').disabled=true;return}
@@ -790,16 +790,51 @@ $('#spinDailyButton').onclick=async()=>{
   await grantWheelReward(pick,'Ruleta diaria');
   $('#dailyResult').textContent='Premio: '+label;await loadAll();
 };
-async function paidSpin(){
-  const category=weightedPick(paidCategories);
-  await spinVisual($('#paidWheel'),paidCategories,category);
-  return createPaidPokemonPrizeForCategory(category.key);
+const PAID_CATEGORY_CLASSES=['category-legendary','category-mythical','category-sublegendary','category-ultrabeast','category-paradox','category-special','category-pseudo','category-starter','category-common'];
+function setPaidReelPokemon(prize,previousName='',nextName=''){
+  const categoryEl=$('#reelPokemonCategory');
+  $('#reelPokemonName').textContent=prize.pokemon;
+  categoryEl.textContent=prize.category;
+  categoryEl.classList.remove(...PAID_CATEGORY_CLASSES);
+  categoryEl.classList.add(`category-${prize.categoryKey||'common'}`);
+  $('#reelPrevious').textContent=previousName||randomPaidPreview().pokemon;
+  $('#reelNext').textContent=nextName||randomPaidPreview().pokemon;
 }
-function createPaidPokemonPrizeForCategory(key){const p=pokemonReward(key);return {label:`${p.pokemon} · ${p.category}`,rewardLabel:`${p.pokemon} — ${p.category} (${p.difficulty})`}}
+function randomPaidPreview(){return createPaidPokemonPrize()}
+function wait(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
+async function animatePaidPokemonReel(finalPrize){
+  const reel=$('#paidPokemonReel');
+  reel.classList.remove('finished');reel.classList.add('spinning');
+  const delays=[45,45,45,45,50,50,55,55,60,65,70,75,85,95,110,130,155,185,220,270,330,420];
+  let previous=randomPaidPreview();
+  for(const delay of delays){
+    const current=randomPaidPreview(),next=randomPaidPreview();
+    setPaidReelPokemon(current,previous.pokemon,next.pokemon);
+    previous=current;
+    await wait(delay);
+  }
+  setPaidReelPokemon(finalPrize,previous.pokemon,finalPrize.pokemon);
+  reel.classList.remove('spinning');reel.classList.add('finished');
+  await wait(250);
+}
+async function paidSpin(){
+  const finalPrize=createPaidPokemonPrize();
+  await animatePaidPokemonReel(finalPrize);
+  return finalPrize;
+}
+function createPaidPokemonPrizeForCategory(key){const p=pokemonReward(key);return {pokemon:p.pokemon,category:p.category,categoryKey:p.categoryKey,difficulty:p.difficulty,label:`${p.pokemon} · ${p.category}`,rewardLabel:`${p.pokemon} — ${p.category} (${p.difficulty})`}}
 $('#spinPaidButton').onclick=async()=>{
   if(!state.account||state.account.credits<100){alert('Necesitas 100 créditos.');return}
-  await supabase.from('accounts').update({credits:state.account.credits-100}).eq('id',state.account.id);
-  pendingPaidReward=await paidSpin();$('#paidResult').textContent='Salió: '+pendingPaidReward.rewardLabel;$('#acceptPaidReward').hidden=false;await loadAll();
+  $('#spinPaidButton').disabled=true;$('#spinPaidTenButton').disabled=true;
+  try{
+    const {error}=await supabase.from('accounts').update({credits:state.account.credits-100}).eq('id',state.account.id);
+    if(error)throw error;
+    pendingPaidReward=await paidSpin();
+    $('#paidResult').innerHTML=`Salió: <strong>${esc(pendingPaidReward.pokemon)}</strong><br><span class="pokemon-category category-${esc(pendingPaidReward.categoryKey)}">${esc(pendingPaidReward.category)}</span>`;
+    $('#acceptPaidReward').hidden=false;
+    await loadAll();
+  }catch(error){console.error(error);$('#paidResult').textContent='No se pudo completar el giro.'}
+  finally{$('#spinPaidButton').disabled=false;$('#spinPaidTenButton').disabled=false}
 };
 $('#spinPaidTenButton').onclick=async()=>{
   if(!state.account||state.account.credits<1000){alert('Necesitas 1.000 créditos.');return}

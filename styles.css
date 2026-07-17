@@ -112,3 +112,42 @@ table{min-width:620px}
 .standings-group{margin-bottom:18px}
 .qualifier-row{background:rgba(56,215,122,.045)}
 .knockout-card{border-top:3px solid var(--purple)}
+
+/* Selector de nombres para la Ruleta Pokémon de 100 créditos. */
+.pokemon-reel{
+  width:min(620px,100%);margin:18px auto 0;padding:18px 16px;
+  border:2px solid var(--line);border-radius:14px;background:#0b111b;
+  position:relative;overflow:hidden;text-align:center;
+  box-shadow:inset 0 0 28px rgba(0,0,0,.55);
+}
+.pokemon-reel::before,.pokemon-reel::after{
+  content:"";position:absolute;left:0;right:0;height:42px;z-index:2;pointer-events:none;
+}
+.pokemon-reel::before{top:0;background:linear-gradient(#0b111b,transparent)}
+.pokemon-reel::after{bottom:0;background:linear-gradient(transparent,#0b111b)}
+.reel-line{min-height:34px;display:grid;place-items:center;font-weight:700}
+.reel-line-faded{color:var(--muted);opacity:.45;font-size:14px}
+.reel-selector{
+  min-height:104px;margin:4px 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;
+  border-top:2px solid var(--gold);border-bottom:2px solid var(--gold);position:relative;z-index:3;
+}
+.reel-selector strong{font-size:clamp(24px,5vw,42px);line-height:1.05;letter-spacing:.01em}
+.pokemon-category,.category-legend-item{
+  display:inline-flex;align-items:center;justify-content:center;border-radius:999px;
+  padding:5px 11px;font-size:11px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;
+  border:1px solid currentColor;
+}
+.category-legend{display:flex;justify-content:center;flex-wrap:wrap;gap:7px;margin-top:14px}
+.category-legend-item{font-size:9px;padding:4px 8px}
+.category-legendary{color:#ffd43b;background:rgba(255,212,59,.12)}
+.category-mythical{color:#ff4d5e;background:rgba(255,77,94,.12)}
+.category-sublegendary{color:#ff922b;background:rgba(255,146,43,.12)}
+.category-ultrabeast{color:#c77dff;background:rgba(199,125,255,.12)}
+.category-paradox{color:#56cfe1;background:rgba(86,207,225,.12)}
+.category-special{color:#ffd43b;background:rgba(255,212,59,.12)}
+.category-pseudo{color:#4d8dff;background:rgba(77,141,255,.12)}
+.category-starter{color:#33d17a;background:rgba(51,209,122,.12)}
+.category-common{color:#adb5bd;background:rgba(173,181,189,.12)}
+.pokemon-reel.spinning .reel-selector strong{filter:blur(.5px)}
+.pokemon-reel.finished{border-color:var(--gold);box-shadow:0 0 0 2px rgba(245,189,22,.14),inset 0 0 28px rgba(0,0,0,.55)}
+@media(max-width:700px){.pokemon-reel{padding:13px 10px}.reel-selector{min-height:92px}.category-legend{gap:5px}}

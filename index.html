@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#090d14">
   <title>Liga Pokémon · Poképachanga</title>
-  <link rel="stylesheet" href="./styles.css?v=10">
+  <link rel="stylesheet" href="./styles.css?v=11">
 </head>
 <body>
 <header>
@@ -96,7 +96,26 @@
     </div>
     <div class="panel">
       <h2>Ruleta Pokémon</h2>
-      <div class="wheel-wrap"><div id="paidWheel" class="wheel"></div><div class="wheel-center">100</div></div>
+      <p class="muted">Los nombres pasan rápidamente y se frenan hasta revelar el Pokémon obtenido.</p>
+      <div id="paidPokemonReel" class="pokemon-reel" aria-live="polite">
+        <div class="reel-line reel-line-faded" id="reelPrevious">Pulsa girar</div>
+        <div class="reel-selector">
+          <strong id="reelPokemonName">¿Qué Pokémon saldrá?</strong>
+          <span id="reelPokemonCategory" class="pokemon-category category-common">COMÚN</span>
+        </div>
+        <div class="reel-line reel-line-faded" id="reelNext">100 créditos por tiro</div>
+      </div>
+      <div class="category-legend" aria-label="Colores de categorías">
+        <span class="category-legend-item category-legendary">Legendario</span>
+        <span class="category-legend-item category-mythical">Mítico</span>
+        <span class="category-legend-item category-sublegendary">Sublegendario</span>
+        <span class="category-legend-item category-ultrabeast">Ultraente</span>
+        <span class="category-legend-item category-paradox">Paradoja</span>
+        <span class="category-legend-item category-special">Fase específica</span>
+        <span class="category-legend-item category-pseudo">Pseudolegendario</span>
+        <span class="category-legend-item category-starter">Inicial</span>
+        <span class="category-legend-item category-common">Común</span>
+      </div>
       <div class="row" style="margin-top:16px"><button id="spinPaidButton">1 tiro · 100 créditos</button><button id="spinPaidTenButton" class="secondary">10 tiros · 1.000 créditos</button></div>
       <div id="paidResult" class="card" style="margin-top:12px">Sin girar.</div>
       <button id="acceptPaidReward" hidden style="width:100%;margin-top:10px">Aceptar recompensa</button>
@@ -196,6 +215,6 @@
   </div>
 </div>
 
-<script type="module" src="./app.js?v=10"></script>
+<script type="module" src="./app.js?v=11"></script>
 </body>
 </html>

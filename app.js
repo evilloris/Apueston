@@ -41,6 +41,14 @@ function scoreOdds(eloA,eloB,a,b){
   return +(2.7+Math.abs((a-b)-expectedDiff)*.75+Math.abs((a+b)-6)*.16).toFixed(2);
 }
 function participantName(id){ return state.participants.find(p=>p.id===id)?.display_name || "—"; }
+function accountParticipatesInMatch(match,account=state.account){
+  if(!match||!account)return false;
+  return [match.side_a,match.side_b].some(participantId=>{
+    const participant=state.participants.find(p=>p.id===participantId);
+    const members=Array.isArray(participant?.members)?participant.members:[];
+    return members.some(member=>member?.type==="account"&&member?.id===account.id);
+  });
+}
 function rankingFor(name){ return state.rankings.find(r=>r.name.toLowerCase()===String(name).toLowerCase()) || {elo:1000,wins:0,losses:0,kos_for:0,kos_against:0}; }
 
 async function loadAll(){
@@ -228,8 +236,9 @@ function renderBetMatches(){
   const list=state.matches.filter(m=>m.tournament_id===tid&&["scheduled","live"].includes(m.status)&&m.side_a&&m.side_b);
   $("#betMatches").innerHTML=list.map(m=>{
     const o=dynamicOdds(m);
-    return `<div class="card match clickable" data-bet-match="${m.id}">
-      <div class="muted">${esc(m.phase)} · ronda ${m.round_no}</div>
+    const blocked=accountParticipatesInMatch(m);
+    return `<div class="card match clickable${blocked?" bet-blocked":""}" data-bet-match="${m.id}">
+      <div class="muted">${esc(m.phase)} · ronda ${m.round_no}${blocked?" · No puedes apostar en tu propia partida":""}</div>
       <div class="teams"><span>${esc(participantName(m.side_a))}${m.status==="live"?`<small class="live-score">${m.score_a??0}</small>`:""}</span><span>${m.status==="live"?'<b class="live-label">● EN VIVO</b>':"vs"}</span><span>${esc(participantName(m.side_b))}${m.status==="live"?`<small class="live-score">${m.score_b??0}</small>`:""}</span></div>
       <div class="odds"><span>x${o.a}</span><span>x${o.b}</span></div>
       ${(()=>{
@@ -246,6 +255,7 @@ function renderBetMatches(){
 function openBet(id){
   if(!state.account){alert("Primero inicia sesión.");return}
   const m=state.matches.find(x=>x.id===id);if(!m)return;
+  if(accountParticipatesInMatch(m)){alert("No puedes apostar en una partida en la que participas.");return}
   $("#betMatchId").value=id;$("#betModalTitle").textContent=`${participantName(m.side_a)} vs ${participantName(m.side_b)}`;
   $("#betType").value="winner";renderBetFields();modal("#betModal");
 }
@@ -299,6 +309,7 @@ function renderParlayBuilder(){
 }
 $('#addToParlay').onclick=()=>{
   const match=state.matches.find(x=>x.id===$('#betMatchId').value);if(!match)return;
+  if(accountParticipatesInMatch(match)){alert('No puedes agregar a la combinada una partida en la que participas.');return}
   const type=$('#betType').value,selection=currentBetSelection(),odds=Number(currentBetOdds());
   const duplicate=parlayCart.some(leg=>leg.match_id===match.id&&leg.bet_type===type&&JSON.stringify(leg.selection)===JSON.stringify(selection));
   if(duplicate){alert('Esa selección ya está en la combinada.');return}
@@ -307,6 +318,7 @@ $('#addToParlay').onclick=()=>{
 };
 async function placeParlay(){
   if(!state.account||!parlayCart.length)return;
+  if(parlayCart.some(leg=>accountParticipatesInMatch(state.matches.find(m=>m.id===leg.match_id)))){alert('La combinada contiene una partida en la que participas. Quítala para continuar.');return}
   const stake=+$('#parlayStake').value;
   if(!stake||stake<1||stake>state.account.credits){alert('Monto inválido.');return}
   const lockedOdds=Number(parlayCart.reduce((value,leg)=>value*Number(leg.locked_odds),1).toFixed(4));
@@ -326,6 +338,7 @@ async function placeParlay(){
 $("#confirmBet").onclick=async()=>{
   const match=state.matches.find(x=>x.id===$("#betMatchId").value),type=$("#betType").value,stake=+$("#betStake").value;
   if(!match||!stake||stake<1||stake>state.account.credits){alert("Monto inválido.");return}
+  if(accountParticipatesInMatch(match)){alert("No puedes apostar en una partida en la que participas.");return}
   const selection=currentBetSelection();
   const odds=currentBetOdds();
   const {error}=await supabase.rpc("place_bet_atomic",{});
@@ -421,11 +434,27 @@ $("#createAccount").onclick=async()=>{
   if(error){alert(error.message);return} $("#newUsername").value="";$("#newPassword").value="";await loadAll();
 };
 function renderAccountsAdmin(){
-  const rows=state.accounts.map(a=>`<tr><td>${esc(a.username)}</td><td>${money(a.credits)}</td><td><input type="checkbox" data-visible="${a.id}" ${a.visible?"checked":""}></td><td><button class="secondary" data-reset="${a.id}">Nueva clave</button> <button class="danger" data-delete-account="${a.id}">Eliminar</button></td></tr>`).join("");
+  const rows=state.accounts.map(a=>`<tr><td>${esc(a.username)}</td><td>${money(a.credits)}</td><td><input type="checkbox" data-visible="${a.id}" ${a.visible?"checked":""}></td><td><button class="secondary" data-reset="${a.id}">Nueva clave</button> <button class="danger" data-reset-ranking="${a.id}">Borrar ELO/estadísticas</button> <button class="danger" data-delete-account="${a.id}">Eliminar</button></td></tr>`).join("");
   $("#accountAdminList").innerHTML=`<table><thead><tr><th>Cuenta</th><th>Saldo</th><th>Visible</th><th>Acciones</th></tr></thead><tbody>${rows||'<tr><td colspan="4">Sin cuentas.</td></tr>'}</tbody></table>`;
-  $$("[data-visible]").forEach(x=>x.onchange=async()=>{await supabase.from("accounts").update({visible:x.checked}).eq("id",x.dataset.visible);loadAll()});
-  $$("[data-reset]").forEach(x=>x.onclick=async()=>{const p=randomPassword();await supabase.from("accounts").update({password_hash:await sha256(p)}).eq("id",x.dataset.reset);alert("Nueva contraseña: "+p)});
-  $$("[data-delete-account]").forEach(x=>x.onclick=async()=>{if(confirm("¿Eliminar la cuenta y todos sus datos?")){await supabase.from("accounts").delete().eq("id",x.dataset.deleteAccount);loadAll()}});
+  $$('[data-visible]').forEach(x=>x.onchange=async()=>{await supabase.from('accounts').update({visible:x.checked}).eq('id',x.dataset.visible);loadAll()});
+  $$('[data-reset]').forEach(x=>x.onclick=async()=>{const p=randomPassword();await supabase.from('accounts').update({password_hash:await sha256(p)}).eq('id',x.dataset.reset);alert('Nueva contraseña: '+p)});
+  $$('[data-reset-ranking]').forEach(x=>x.onclick=async()=>{
+    const account=state.accounts.find(a=>a.id===x.dataset.resetRanking);if(!account)return;
+    if(!confirm(`¿Borrar el ELO y todas las estadísticas de ${account.username}?`))return;
+    const {error}=await supabase.from('rankings').upsert({name:account.username,elo:1000,wins:0,losses:0,kos_for:0,kos_against:0},{onConflict:'name'});
+    if(error){alert('No se pudo borrar el progreso.');console.error(error);return}
+    await loadAll();
+  });
+  $$('[data-delete-account]').forEach(x=>x.onclick=async()=>{if(confirm('¿Eliminar la cuenta y todos sus datos?')){await supabase.from('accounts').delete().eq('id',x.dataset.deleteAccount);loadAll()}});
+  const resetAll=$('#resetAllRankings');
+  if(resetAll)resetAll.onclick=async()=>{
+    if(!confirm('¿Borrar el ELO y todas las estadísticas de todos los jugadores?'))return;
+    const rows=state.accounts.map(a=>({name:a.username,elo:1000,wins:0,losses:0,kos_for:0,kos_against:0}));
+    if(!rows.length)return;
+    const {error}=await supabase.from('rankings').upsert(rows,{onConflict:'name'});
+    if(error){alert('No se pudo borrar el progreso de todos.');console.error(error);return}
+    await loadAll();
+  };
 }
 function renderCreditsAdmin(){
   const rows=state.accounts.map(a=>`<tr><td>${esc(a.username)}</td><td>${money(a.credits)}</td><td><input type="number" min="1" value="100" data-credit-input="${a.id}"></td><td><button data-add-credit="${a.id}">Sumar</button> <button class="danger" data-remove-credit="${a.id}">Retirar</button></td></tr>`).join("");

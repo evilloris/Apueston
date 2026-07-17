@@ -29,7 +29,7 @@ create table public.accounts (
 create table public.tournaments (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  format text not null check (format in ('1v1','2v2','1v1-double')),
+  format text not null check (format in ('1v1','2v2','1v1-double','round-robin')),
   status text not null default 'draft' check (status in ('draft','active','finished')),
   config jsonb not null default '{"groups":2,"qualify_per_group":2,"third_place":true,"repechage":false}'::jsonb,
   created_at timestamptz not null default now()

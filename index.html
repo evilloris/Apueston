@@ -184,7 +184,7 @@
       <h2>1. Crear torneo</h2>
       <div class="grid">
         <div><label>Nombre del torneo</label><input id="tournamentName" placeholder="Ej: Copa Poképachanga"></div>
-        <div><label>Modalidad</label><select id="tournamentFormat"><option value="1v1">1 vs 1</option><option value="2v2">2 vs 2</option><option value="1v1-double">1 vs 1 doble</option></select></div>
+        <div><label>Modalidad</label><select id="tournamentFormat"><option value="1v1">1 vs 1</option><option value="2v2">2 vs 2</option><option value="1v1-double">1 vs 1 doble</option><option value="round-robin">Todos contra todos (1 vs 1)</option></select></div>
         <div><label>Cantidad de participantes/equipos</label><input id="tournamentParticipantCount" type="number" min="2" max="32" value="8"></div>
         <div><label>Cantidad de grupos</label><input id="tournamentGroups" type="number" min="1" max="26" value="2"></div>
         <div><label>Clasifican por grupo</label><input id="qualifyPerGroup" type="number" min="1" value="2"></div>
@@ -227,6 +227,7 @@
         <label class="card"><input id="enableRepechage" type="checkbox"> Activar repechaje</label>
         <label class="card"><input id="enableThirdPlace" type="checkbox" checked> Batalla por el 3.er puesto</label>
       </div>
+      <div id="tournamentMatchCount" class="card muted" style="margin-top:10px"></div>
       <div id="bracketStatus" class="muted" style="margin-top:10px"></div>
       <div id="knockoutBracket" class="grid" style="margin-top:14px"></div>
     </div>

@@ -512,6 +512,35 @@ function participantEloFromMembers(members){
   if(!members?.length)return 1000;
   return Math.round(members.reduce((sum,m)=>sum+rankingFor(botOrAccountName(m)).elo,0)/members.length);
 }
+function isRoundRobinTournament(t){return t?.format==="round-robin"||t?.config?.round_robin===true;}
+function shuffled(list){const a=[...list];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function tournamentMatchCountDetails(t,repechageOverride,thirdOverride){
+  if(!t)return {group:0,repechage:0,knockout:0,third:0,final:0,total:0};
+  const n=Number(t.config?.participant_count||0);
+  if(isRoundRobinTournament(t)){
+    const group=n>1?n*(n-1)/2:0;
+    return {group,repechage:0,knockout:0,third:0,final:0,total:group};
+  }
+  const groups=Math.max(1,Number(t.config?.groups||1));
+  const base=Math.floor(n/groups),extra=n%groups;
+  let group=0;
+  for(let i=0;i<groups;i++){const size=base+(i<extra?1:0);group+=size*(size-1)/2;}
+  if(t.format==="1v1-double")group*=2;
+  const repechage=Boolean(repechageOverride??t.config?.repechage)?1:0;
+  const qualified=groups*Number(t.config?.qualify_per_group||1)+repechage;
+  const valid=[2,4,8,16].includes(qualified);
+  const final=valid?1:0;
+  const knockout=valid?Math.max(0,qualified-2):0;
+  const third=valid&&qualified>=4&&Boolean(thirdOverride??(t.config?.third_place!==false))?1:0;
+  return {group,repechage,knockout,third,final,total:group+repechage+knockout+third+final};
+}
+function renderTournamentMatchCount(){
+  const box=$("#tournamentMatchCount");if(!box)return;
+  const t=tournamentById($("#adminTournamentSelect")?.value);
+  if(!t){box.textContent="";return}
+  const c=tournamentMatchCountDetails(t,$("#enableRepechage")?.checked,$("#enableThirdPlace")?.checked);
+  box.innerHTML=`<strong>Enfrentamientos previstos</strong><br>Clasificatorias: ${c.group} · Repechaje: ${c.repechage} · Eliminación directa: ${c.knockout} · 3.er lugar: ${c.third} · Final: ${c.final}<br><strong>Total: ${c.total} enfrentamientos</strong>`;
+}
 
 const tournamentDraftParticipants=new Map();
 function entrantCardHtml(index,existing={}){
@@ -526,7 +555,7 @@ function entrantCardHtml(index,existing={}){
 }
 function renderTournamentEntrantSetup(t){
   const total=t.format==="2v2"?(t.config?.participant_count||2)*2:(t.config?.participant_count||2);
-  $("#tournamentEntrantHelp").textContent=t.format==="2v2"?`Ingresa los ${total} jugadores. Se crearán ${t.config?.participant_count||2} equipos de dos con promedios de ELO lo más parecidos posible.`:`Ingresa los ${total} jugadores. Se distribuirán automáticamente por ELO entre los grupos.`;
+  $("#tournamentEntrantHelp").textContent=isRoundRobinTournament(t)?`Ingresa los ${total} jugadores. Este modo ignora el ELO y sortea aleatoriamente el orden de los enfrentamientos.`:t.format==="2v2"?`Ingresa los ${total} jugadores. Se crearán ${t.config?.participant_count||2} equipos de dos con promedios de ELO lo más parecidos posible.`:`Ingresa los ${total} jugadores. Se distribuirán automáticamente por ELO entre los grupos.`;
   $("#tournamentEntrantCards").innerHTML=Array.from({length:total},(_,i)=>entrantCardHtml(i)).join("");
   $$('[data-entrant-kind]',"#tournamentEntrantCards").forEach(sel=>sel.onchange=()=>{const card=sel.closest('[data-entrant]');card.querySelector('[data-entrant-account-wrap]').hidden=sel.value==="bot";card.querySelector('[data-entrant-bot-wrap]').hidden=sel.value!=="bot";});
   $("#tournamentEntrantSetup").hidden=false;$("#tournamentTeamSetup").hidden=true;
@@ -548,7 +577,9 @@ function readTournamentEntrants(){
 }
 function snakeGroupAssignments(count,groups){const result=[];let g=1,dir=1;for(let i=0;i<count;i++){result.push(g);if(groups>1){g+=dir;if(g>groups){g=groups;dir=-1}else if(g<1){g=1;dir=1}}}return result;}
 function balancedTournamentParticipants(t,members){
-  const groups=t.config?.groups||1,ranked=[...members].sort((a,b)=>rankingFor(b.name).elo-rankingFor(a.name).elo);let participants;
+  const groups=t.config?.groups||1;
+  if(isRoundRobinTournament(t))return shuffled(members).map(member=>({display_name:member.name,kind:member.type,members:[member],group_no:1,seed_elo:1000}));
+  const ranked=[...members].sort((a,b)=>rankingFor(b.name).elo-rankingFor(a.name).elo);let participants;
   if(t.format==="2v2"){
     participants=[];while(ranked.length){const high=ranked.shift(),low=ranked.pop();participants.push({members:[high,low]});}
     participants.sort((a,b)=>participantEloFromMembers(b.members)-participantEloFromMembers(a.members));
@@ -561,8 +592,10 @@ $("#createTournament").onclick=async()=>{
   const name=$("#tournamentName").value.trim();
   const format=$("#tournamentFormat").value;
   const participant_count=+$("#tournamentParticipantCount").value;
-  const groups=+$("#tournamentGroups").value;
-  const qualify=+$("#qualifyPerGroup").value;
+  let groups=+$("#tournamentGroups").value;
+  let qualify=+$("#qualifyPerGroup").value;
+  const roundRobin=format==="round-robin";
+  if(roundRobin){groups=1;qualify=1;}
 
   if(!name){alert("Escribe el nombre del torneo.");return}
   if(participant_count<2||participant_count>32){alert("La cantidad de participantes debe estar entre 2 y 32.");return}
@@ -571,7 +604,7 @@ $("#createTournament").onclick=async()=>{
 
   const config={
     groups, qualify_per_group:qualify, participant_count,
-    third_place:true, repechage:false
+    third_place:roundRobin?false:true, repechage:false, round_robin:roundRobin
   };
   const {data,error}=await supabase.from("tournaments").insert({name,format,config}).select().single();
   if(error){alert(error.message);return}
@@ -591,7 +624,7 @@ function renderTournamentsAdmin(){
     const count=t.config?.participant_count||0;
     return `<div class="card">
       <strong>${esc(t.name)}</strong>
-      <div class="muted">${esc(t.format)} · ${count} participantes · ${t.config?.groups||1} grupos · ${esc(t.status)}</div>
+      <div class="muted">${isRoundRobinTournament(t)?"Todos contra todos":esc(t.format)} · ${count} participantes · ${t.config?.groups||1} grupos · ${esc(t.status)}</div>
       <button class="secondary" data-edit-tournament="${t.id}">Administrar</button>
       <button class="danger" data-delete-tournament="${t.id}">Eliminar</button>
     </div>`;
@@ -755,6 +788,7 @@ function renderParticipantCards(){
   $("#participantCards").innerHTML=Array.from({length:count},(_,i)=>participantCardHtml(t,i,source[i])).join("");
   $$('[data-member-kind]').forEach(sel=>sel.onchange=()=>{const block=sel.closest('[data-member]');block.querySelector(`[data-account-wrap="${sel.dataset.memberKind}"]`).hidden=sel.value==="bot";block.querySelector(`[data-bot-wrap="${sel.dataset.memberKind}"]`).hidden=sel.value!=="bot";});
   $("#tournamentEntrantSetup").hidden=true;$("#tournamentTeamSetup").hidden=false;
+  if($("#fairPairingButton")){$("#fairPairingButton").textContent=isRoundRobinTournament(t)?"🎲 Sortear jugadores":"⚖️ Emparejamiento justo por ELO";}
 }
 
 function readParticipantCards(){
@@ -818,14 +852,15 @@ $("#generateFixture").onclick=async()=>{
   for(const g of groupNumbers)if(ps.filter(p=>p.group_no===g).length<2){alert(`El grupo ${groupLetter(g)} necesita al menos 2 participantes.`);return}
 
   await supabase.from("matches").delete().eq("tournament_id",tid);
-  const rows=[];let round=1;
+  let rows=[];let round=1;
   for(const g of groupNumbers.sort((a,b)=>a-b)){
-    const gp=ps.filter(p=>p.group_no===g);
+    const gp=isRoundRobinTournament(t)?shuffled(ps.filter(p=>p.group_no===g)):ps.filter(p=>p.group_no===g);
     for(let i=0;i<gp.length;i++)for(let j=i+1;j<gp.length;j++){
       rows.push({tournament_id:tid,phase:"group",round_no:round++,group_no:g,side_a:gp[i].id,side_b:gp[j].id,status:"scheduled"});
       if(t.format==="1v1-double")rows.push({tournament_id:tid,phase:"group",round_no:round++,group_no:g,side_a:gp[j].id,side_b:gp[i].id,status:"scheduled"});
     }
   }
+  if(isRoundRobinTournament(t))rows=shuffled(rows).map((row,i)=>({...row,round_no:i+1}));
   const {error}=await supabase.from("matches").insert(rows);
   if(error){alert(error.message);return}
   await supabase.from("tournaments").update({status:"active"}).eq("id",tid);
@@ -1087,6 +1122,11 @@ function worldCupOpeningPairs(qualifiers,groups,q){
 async function autoGenerateKnockout(tid){
   const t=tournamentById(tid);
   if(!t||!isGroupStageComplete(tid))return;
+  if(isRoundRobinTournament(t)){
+    await supabase.from("tournaments").update({status:"finished"}).eq("id",tid);
+    await loadAll();$("#adminTournamentSelect").value=tid;renderMatchAdmin();renderKnockoutPanel();
+    return;
+  }
   const mainExisting=tournamentMatches(tid).some(m=>["quarterfinal","semifinal","final"].includes(m.phase));
   if(mainExisting){renderKnockoutPanel();return}
   await generateKnockoutRows(tid);
@@ -1187,8 +1227,11 @@ function renderKnockoutPanel(){
   const tid=$("#adminTournamentSelect").value,t=tournamentById(tid);if(!t)return;
   $("#enableRepechage").checked=!!t.config?.repechage;
   $("#enableThirdPlace").checked=t.config?.third_place!==false;
+  $("#enableRepechage").disabled=isRoundRobinTournament(t);
+  $("#enableThirdPlace").disabled=isRoundRobinTournament(t);
   const done=isGroupStageComplete(tid);
-  $("#bracketStatus").textContent=done?"La fase de grupos terminó. Las eliminatorias se generan automáticamente.":"Las eliminatorias aparecerán al finalizar todas las peleas de grupos.";
+  $("#bracketStatus").textContent=isRoundRobinTournament(t)?(done?"Todos los enfrentamientos finalizaron.":"Todos los jugadores se enfrentarán una vez entre sí; no hay eliminatorias."):done?"La fase de grupos terminó. Las eliminatorias se generan automáticamente.":"Las eliminatorias aparecerán al finalizar todas las peleas de grupos.";
+  renderTournamentMatchCount();
   const ms=tournamentMatches(tid).filter(m=>m.phase!=="group");
   $("#knockoutBracket").innerHTML=ms.map(m=>`<div class="card knockout-card">
     <span class="pill">${esc(m.phase)}</span>
@@ -1197,13 +1240,15 @@ function renderKnockoutPanel(){
   </div>`).join("")||'<div class="muted">Aún no hay cruces eliminatorios.</div>';
 }
 $("#enableRepechage").onchange=async()=>{
-  const tid=$("#adminTournamentSelect").value,t=tournamentById(tid);if(!t)return;
+  const tid=$("#adminTournamentSelect").value,t=tournamentById(tid);if(!t||isRoundRobinTournament(t))return;
+  renderTournamentMatchCount();
   await supabase.from("tournaments").update({config:{...t.config,repechage:$("#enableRepechage").checked}}).eq("id",tid);
   await loadAll();$("#adminTournamentSelect").value=tid;renderKnockoutPanel();
   if(isGroupStageComplete(tid))await autoGenerateKnockout(tid);
 };
 $("#enableThirdPlace").onchange=async()=>{
-  const tid=$("#adminTournamentSelect").value,t=tournamentById(tid);if(!t)return;
+  const tid=$("#adminTournamentSelect").value,t=tournamentById(tid);if(!t||isRoundRobinTournament(t))return;
+  renderTournamentMatchCount();
   await supabase.from("tournaments").update({config:{...t.config,third_place:$("#enableThirdPlace").checked}}).eq("id",tid);
   await loadAll();$("#adminTournamentSelect").value=tid;renderKnockoutPanel();
 };
@@ -1441,3 +1486,12 @@ renderWeeklyDailyPrizes();
 const saved=localStorage.getItem("liga_account");
 if(saved){const {data}=await supabase.from("accounts").select("*").eq("id",saved).maybeSingle();state.account=data||null}
 await loadAll();
+
+function syncTournamentFormatFields(){
+  const rr=$("#tournamentFormat")?.value==="round-robin";
+  if($("#tournamentGroups")){ $("#tournamentGroups").disabled=rr; if(rr)$("#tournamentGroups").value=1; }
+  if($("#qualifyPerGroup")){ $("#qualifyPerGroup").disabled=rr; if(rr)$("#qualifyPerGroup").value=1; }
+  const button=$("#createTournament");if(button)button.textContent=rr?"Crear todos contra todos y generar tarjetas":"Crear torneo y generar tarjetas";
+}
+if($("#tournamentFormat"))$("#tournamentFormat").addEventListener("change",syncTournamentFormatFields);
+syncTournamentFormatFields();

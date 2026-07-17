@@ -165,3 +165,5 @@ table{min-width:620px}
 .odds-admin-row{display:grid;grid-template-columns:repeat(2,minmax(120px,1fr)) auto auto;gap:8px;align-items:end;margin:10px 0;padding:10px;border:1px solid var(--line);border-radius:12px}
 .odds-admin-row label{margin:0}.odds-admin-row small{grid-column:1/-1}
 @media(max-width:760px){.odds-admin-row{grid-template-columns:1fr 1fr}.odds-admin-row button{width:100%}}
+
+.locked-user-odds{margin-top:8px;padding:7px 10px;border:1px solid rgba(255,255,255,.16);border-radius:10px;font-size:.82rem;font-weight:700;opacity:.9}

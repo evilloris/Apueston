@@ -154,10 +154,10 @@ function clamp(value,min,max){return Math.max(min,Math.min(max,value))}
 function scoreProbabilityShift(diff){
   const d=Math.abs(Number(diff)||0);
   if(d<=0)return 0;
-  if(d<=2)return d*0.02;               // 1 -> 2%, 2 -> 4%
-  if(d<=4)return 0.04+(d-2)*0.035;     // 3 -> 7.5%, 4 -> 11%
-  if(d<=6)return 0.11+(d-4)*0.07;      // 5 -> 18%, 6 -> 25%
-  return Math.min(0.40,0.25+(d-6)*0.035);
+  if(d<=2)return d*0.025;              // 1 -> 2.5%, 2 -> 5%
+  if(d<=4)return 0.05+(d-2)*0.045;     // 3 -> 9.5%, 4 -> 14%
+  if(d<=6)return 0.14+(d-4)*0.105;     // 5 -> 24.5%, 6 -> 35%
+  return Math.min(0.52,0.35+(d-6)*0.045);
 }
 function dynamicOdds(match){
   const sideA=state.participants.find(p=>p.id===match.side_a),sideB=state.participants.find(p=>p.id===match.side_b);
@@ -174,7 +174,7 @@ function dynamicOdds(match){
   const stakeA=winnerBets.filter(b=>b.selection?.participant_id===match.side_a).reduce((n,b)=>n+Number(b.stake||0),0);
   const stakeB=winnerBets.filter(b=>b.selection?.participant_id===match.side_b).reduce((n,b)=>n+Number(b.stake||0),0);
   const total=stakeA+stakeB;
-  if(total>0)pA+=((stakeA-stakeB)/total)*0.06;
+  if(total>0)pA+=((stakeA-stakeB)/total)*0.10;
 
   // El marcador mueve la probabilidad de manera continua: poco (1-2), medio (3-4), alto (5-6).
   const diff=(Number(match.score_a)||0)-(Number(match.score_b)||0);
@@ -228,6 +228,12 @@ function renderBetMatches(){
       <div class="muted">${esc(m.phase)} · ronda ${m.round_no}</div>
       <div class="teams"><span>${esc(participantName(m.side_a))}${m.status==="live"?`<small class="live-score">${m.score_a??0}</small>`:""}</span><span>${m.status==="live"?'<b class="live-label">● EN VIVO</b>':"vs"}</span><span>${esc(participantName(m.side_b))}${m.status==="live"?`<small class="live-score">${m.score_b??0}</small>`:""}</span></div>
       <div class="odds"><span>x${o.a}</span><span>x${o.b}</span></div>
+      ${(()=>{
+        if(!state.account)return "";
+        const mine=state.bets.filter(b=>b.account_id===state.account.id&&b.match_id===m.id&&b.status==='pending');
+        if(!mine.length)return "";
+        return `<div class="locked-user-odds">Tu apuesta conserva su cuota: ${mine.map(b=>`x${Number(b.locked_odds).toFixed(3)}`).join(' · ')}</div>`;
+      })()}
       <div class="muted">${m.scheduled_at?new Date(m.scheduled_at).toLocaleString("es-BO"):"Sin horario"}</div>
     </div>`;
   }).join("")||'<div class="muted">No hay enfrentamientos abiertos.</div>';
@@ -276,12 +282,22 @@ $("#confirmBet").onclick=async()=>{
   const {error}=await supabase.rpc("place_bet_atomic",{});
   if(error && !String(error.message).includes("Could not find")) console.warn(error);
   const newCredits=state.account.credits-stake;
+  const betRow={account_id:state.account.id,tournament_id:match.tournament_id,match_id:match.id,bet_type:type,selection,stake,locked_odds:odds};
   const [u,b]=await Promise.all([
     supabase.from("accounts").update({credits:newCredits}).eq("id",state.account.id),
-    supabase.from("bets").insert({account_id:state.account.id,tournament_id:match.tournament_id,match_id:match.id,bet_type:type,selection,stake,locked_odds:odds})
+    supabase.from("bets").insert(betRow).select("*").single()
   ]);
   if(u.error||b.error){alert("No se pudo guardar la apuesta.");console.error(u.error||b.error);return}
-  modal("#betModal",false);await loadAll();
+
+  // Actualización inmediata local: la cuota del mercado cambia sin esperar Realtime ni recargar.
+  state.account.credits=newCredits;
+  const accountIndex=state.accounts.findIndex(a=>a.id===state.account.id);
+  if(accountIndex>=0)state.accounts[accountIndex]={...state.accounts[accountIndex],credits:newCredits};
+  state.bets.unshift(b.data||{...betRow,id:`local-${Date.now()}`,status:'pending',created_at:new Date().toISOString()});
+  modal("#betModal",false);
+  renderBetMatches();renderMyBets();renderAll();
+  // Sincroniza en segundo plano con Supabase.
+  loadAll();
 };
 function renderMyBets(){
   if(!state.account){$("#myBets").innerHTML='<div class="muted">Inicia sesión.</div>';return}

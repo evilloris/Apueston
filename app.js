@@ -1334,10 +1334,10 @@ function startDailyCountdown(){
   dailyCountdownTimer=setInterval(tick,1000);
 }
 const paidCategories=[
-  {label:'Pokémon común',weight:82,key:'common'},
-  {label:'Pokémon inicial',weight:13,key:'hard'},
-  {label:'Pseudolegendario',weight:4,key:'veryHard'},
-  {label:'Legendario / mítico / especial',weight:1,key:'impossible'}
+  {label:'Pokémon común',weight:95,key:'common'},
+  {label:'Pokémon inicial',weight:4,key:'hard'},
+  {label:'Pseudolegendario',weight:0.8,key:'veryHard'},
+  {label:'Legendario / mítico / especial',weight:0.2,key:'impossible'}
 ];
 function weightedPick(items){let r=Math.random()*items.reduce((sum,item)=>sum+item.weight,0);for(const item of items){r-=item.weight;if(r<=0)return item}return items[items.length-1]}
 function createPaidPokemonPrize(){const category=weightedPick(paidCategories);return createPaidPokemonPrizeForCategory(category.key)}

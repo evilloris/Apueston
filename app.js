@@ -152,17 +152,26 @@ function dynamicOdds(match){
   return oddsFromElo(ra,rb);
 }
 
+function bindGroupAccordions(container){
+  if(!container)return;
+  const details=$$("details.group-accordion",container);
+  details.forEach(item=>item.addEventListener("toggle",()=>{
+    if(!item.open)return;
+    details.forEach(other=>{if(other!==item)other.open=false});
+  }));
+}
+function groupTableHtml(g,list,q=0){
+  return `<details class="group-accordion"><summary>Grupo ${groupLetter(g)}</summary><div class="group-table-wrap"><table><thead><tr><th>#</th><th>Jugador/equipo</th><th>PJ</th><th>PG</th><th>Pts</th><th>KO+</th><th>KO-</th><th>Dif.</th></tr></thead><tbody>${list.map((x,i)=>`<tr class="${i<q?"qualifier-row":""}"><td>${i+1}</td><td>${esc(x.display_name)}</td><td>${x.pj}</td><td>${x.pg}</td><td>${x.pts}</td><td>${x.kf}</td><td>${x.kc}</td><td>${x.kf-x.kc}</td></tr>`).join("")}</tbody></table></div></details>`;
+}
+
 function renderBetStandings(){
   const tid=$("#betTournamentSelect").value;
   if(!tid){$("#betStandings").innerHTML='<div class="muted">Selecciona un torneo.</div>';return}
   const t=tournamentById(tid),q=t?.config?.qualify_per_group||1,rows=standingsFor(tid);
-  const groups=[...new Set(rows.map(r=>r.group_no))];
-  $("#betStandings").innerHTML=groups.map(g=>{
-    const list=rows.filter(r=>r.group_no===g);
-    return `<div class="standings-group"><h3>Grupo ${groupLetter(g)}</h3><table><thead><tr><th>#</th><th>Jugador/equipo</th><th>PJ</th><th>PG</th><th>Pts</th><th>KO+</th><th>KO-</th><th>Dif.</th></tr></thead><tbody>${list.map((x,i)=>`<tr class="${i<q?"qualifier-row":""}"><td>${i+1}</td><td>${esc(x.display_name)}</td><td>${x.pj}</td><td>${x.pg}</td><td>${x.pts}</td><td>${x.kf}</td><td>${x.kc}</td><td>${x.kf-x.kc}</td></tr>`).join("")}</tbody></table></div>`;
-  }).join("")||'<div class="muted">Sin participantes.</div>';
+  const groups=[...new Set(rows.map(r=>r.group_no))].sort((a,b)=>b-a);
+  $("#betStandings").innerHTML=groups.map((g,i)=>groupTableHtml(g,rows.filter(r=>r.group_no===g),q).replace('<details class="group-accordion">',`<details class="group-accordion" ${i===0?"open":""}>`)).join("")||'<div class="muted">Sin participantes.</div>';
+  bindGroupAccordions($("#betStandings"));
 }
-
 
 function renderBetTournamentStandings(){
   const box=$("#betTournamentStandings");
@@ -170,17 +179,9 @@ function renderBetTournamentStandings(){
   const tid=$("#betTournamentSelect").value;
   if(!tid){box.innerHTML="";return}
   const rows=standingsFor(tid);
-  const groups=[...new Set(rows.map(r=>r.group_no))].sort((a,b)=>a-b);
-  box.innerHTML=groups.map(g=>`
-    <div>
-      <h3>Grupo ${groupLetter(g)}</h3>
-      <table>
-        <thead><tr><th>#</th><th>Jugador/equipo</th><th>PJ</th><th>PG</th><th>PTS</th><th>KO+</th><th>KO-</th><th>DIF</th></tr></thead>
-        <tbody>${rows.filter(r=>r.group_no===g).map((r,i)=>`
-          <tr><td>${i+1}</td><td>${esc(r.display_name)}</td><td>${r.pj}</td><td>${r.pg}</td><td>${r.pts}</td><td>${r.kf}</td><td>${r.kc}</td><td>${r.kf-r.kc}</td></tr>`).join("")}
-        </tbody>
-      </table>
-    </div>`).join("")||'<div class="muted">La tabla aparecerá cuando se asignen participantes.</div>';
+  const groups=[...new Set(rows.map(r=>r.group_no))].sort((a,b)=>b-a);
+  box.innerHTML=groups.map((g,i)=>groupTableHtml(g,rows.filter(r=>r.group_no===g)).replace('<details class="group-accordion">',`<details class="group-accordion" ${i===0?"open":""}>`)).join("")||'<div class="muted">La tabla aparecerá cuando se asignen participantes.</div>';
+  bindGroupAccordions(box);
 }
 function renderBetMatches(){
   const tid=$("#betTournamentSelect").value;
@@ -189,7 +190,7 @@ function renderBetMatches(){
     const o=dynamicOdds(m);
     return `<div class="card match clickable" data-bet-match="${m.id}">
       <div class="muted">${esc(m.phase)} · ronda ${m.round_no}</div>
-      <div class="teams"><span>${esc(participantName(m.side_a))}</span><span>vs</span><span>${esc(participantName(m.side_b))}</span></div>
+      <div class="teams"><span>${esc(participantName(m.side_a))}${m.status==="live"?`<small class="live-score">${m.score_a??0}</small>`:""}</span><span>${m.status==="live"?'<b class="live-label">● EN VIVO</b>':"vs"}</span><span>${esc(participantName(m.side_b))}${m.status==="live"?`<small class="live-score">${m.score_b??0}</small>`:""}</span></div>
       <div class="odds"><span>x${o.a}</span><span>x${o.b}</span></div>
       <div class="muted">${m.scheduled_at?new Date(m.scheduled_at).toLocaleString("es-BO"):"Sin horario"}</div>
     </div>`;
@@ -254,8 +255,9 @@ function renderMyBets(){
 
 function renderGeneralStats(){
   const accountNames=new Set(state.accounts.map(a=>a.username.toLowerCase()));
-  const rows=state.rankings.filter(r=>accountNames.has(r.name.toLowerCase())).map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.name)}</td><td>${r.elo}</td><td>${r.wins}</td><td>${r.losses}</td><td>${r.kos_for}</td><td>${r.kos_against}</td></tr>`).join("");
-  $("#generalStats").innerHTML=`<table><thead><tr><th>#</th><th>Jugador</th><th>ELO</th><th>PG</th><th>PP</th><th>KO+</th><th>KO-</th></tr></thead><tbody>${rows||'<tr><td colspan="7">Sin estadísticas.</td></tr>'}</tbody></table>`;
+  const rows=state.rankings.filter(r=>accountNames.has(r.name.toLowerCase())).map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.name)}</td>${state.admin?`<td>${r.elo}</td>`:""}<td>${r.wins}</td><td>${r.losses}</td><td>${r.kos_for}</td><td>${r.kos_against}</td></tr>`).join("");
+  const colspan=state.admin?7:6;
+  $("#generalStats").innerHTML=`<table><thead><tr><th>#</th><th>Jugador</th>${state.admin?"<th>ELO</th>":""}<th>PG</th><th>PP</th><th>KO+</th><th>KO-</th></tr></thead><tbody>${rows||`<tr><td colspan="${colspan}">Sin estadísticas.</td></tr>`}</tbody></table>`;
 }
 function standingsFor(tid){
   const ps=state.participants.filter(p=>p.tournament_id===tid), ms=state.matches.filter(m=>m.tournament_id===tid&&m.phase==="group"&&["finished","walkover"].includes(m.status));
@@ -271,7 +273,9 @@ function renderResults(){
   const tid=$("#resultTournamentSelect").value;
   if(!tid){$("#standings").innerHTML="";$("#finishedMatches").innerHTML="";return}
   const st=standingsFor(tid);
-  $("#standings").innerHTML=`<table><thead><tr><th>Grupo</th><th>Jugador</th><th>PJ</th><th>PG</th><th>Pts</th><th>KO+</th><th>KO-</th><th>Dif</th></tr></thead><tbody>${st.map(x=>`<tr><td>${x.group_no}</td><td>${esc(x.display_name)}</td><td>${x.pj}</td><td>${x.pg}</td><td>${x.pts}</td><td>${x.kf}</td><td>${x.kc}</td><td>${x.kf-x.kc}</td></tr>`).join("")}</tbody></table>`;
+  const groups=[...new Set(st.map(r=>r.group_no))].sort((a,b)=>b-a);
+  $("#standings").innerHTML=groups.map((g,i)=>groupTableHtml(g,st.filter(r=>r.group_no===g)).replace('<details class="group-accordion">',`<details class="group-accordion" ${i===0?"open":""}>`)).join("");
+  bindGroupAccordions($("#standings"));
   const ms=state.matches.filter(m=>m.tournament_id===tid&&["finished","walkover"].includes(m.status));
   $("#finishedMatches").innerHTML=ms.map(m=>`<div class="card">${esc(participantName(m.side_a))} <strong>${m.score_a??0}-${m.score_b??0}</strong> ${esc(participantName(m.side_b))} · ${esc(m.phase)}</div>`).join("")||'<div class="muted">Sin resultados.</div>';
 }
@@ -536,6 +540,7 @@ function renderMatchAdmin(){
   $$("[data-walkover-a]").forEach(b=>b.onclick=()=>finishMatch(b.dataset.walkoverA,true,"a"));
   $$("[data-walkover-b]").forEach(b=>b.onclick=()=>finishMatch(b.dataset.walkoverB,true,"b"));
   $$("[data-save-schedule]").forEach(b=>b.onclick=()=>saveSchedule(b.dataset.saveSchedule));
+  $$("[data-score-a],[data-score-b]").forEach(input=>input.addEventListener("input",()=>queueLiveScore(input.dataset.scoreA||input.dataset.scoreB)));
 }
 function matchCardAdmin(m){
   const started=m.status==="live",done=["finished","walkover"].includes(m.status);
@@ -566,14 +571,31 @@ function matchCardAdmin(m){
     </div>
   </div>`;
 }
+const liveScoreTimers=new Map();
+function queueLiveScore(id){
+  const m=state.matches.find(x=>x.id===id);if(!m||m.status!=="live")return;
+  const a=+document.querySelector(`[data-score-a="${id}"]`)?.value||0;
+  const b=+document.querySelector(`[data-score-b="${id}"]`)?.value||0;
+  m.score_a=a;m.score_b=b;
+  renderBetMatches();
+  clearTimeout(liveScoreTimers.get(id));
+  liveScoreTimers.set(id,setTimeout(async()=>{
+    const {error}=await supabase.from("matches").update({score_a:a,score_b:b}).eq("id",id);
+    if(error)console.error("No se pudo actualizar el marcador en vivo",error);
+  },220));
+}
+
 async function saveSchedule(id){
   const value=document.querySelector(`[data-match-date="${id}"]`).value;
   const {error}=await supabase.from("matches").update({scheduled_at:value?new Date(value).toISOString():null}).eq("id",id);
   if(error)alert(error.message);else alert("Fecha y hora guardadas.");
 }
 async function startMatch(id){
-  await supabase.from("matches").update({status:"live"}).eq("id",id);
-  await loadAll();renderMatchAdmin();
+  const m=state.matches.find(x=>x.id===id);if(!m)return;
+  m.status="live";m.score_a=m.score_a??0;m.score_b=m.score_b??0;
+  renderMatchAdmin();renderBetMatches();
+  const {error}=await supabase.from("matches").update({status:"live",score_a:m.score_a,score_b:m.score_b}).eq("id",id);
+  if(error){console.error(error);await loadAll()}
 }
 async function finishMatch(id,walkover=false,side=null){
   const m=state.matches.find(x=>x.id===id);if(!m)return;
@@ -581,17 +603,64 @@ async function finishMatch(id,walkover=false,side=null){
   if(walkover){
     status="walkover";winner=side==="a"?m.side_a:m.side_b;a=side==="a"?1:0;b=side==="b"?1:0;
   }else{
-    a=+document.querySelector(`[data-score-a="${id}"]`).value;
-    b=+document.querySelector(`[data-score-b="${id}"]`).value;
+    a=+document.querySelector(`[data-score-a="${id}"]`)?.value||0;
+    b=+document.querySelector(`[data-score-b="${id}"]`)?.value||0;
     if(a===b){alert("El marcador no puede terminar empatado.");return}
     winner=a>b?m.side_a:m.side_b;
   }
-  await supabase.from("matches").update({score_a:a,score_b:b,status,winner_id:winner}).eq("id",id);
-  await updateRankingAfterMatch(m,a,b,winner);
-  await settleBets(id);
-  await loadAll();$("#adminTournamentSelect").value=m.tournament_id;renderMatchAdmin();
-  if(m.phase==="group") await autoGenerateKnockout(m.tournament_id);
+  const previous={score_a:m.score_a,score_b:m.score_b,status:m.status,winner_id:m.winner_id};
+  Object.assign(m,{score_a:a,score_b:b,status,winner_id:winner});
+  renderMatchAdmin();renderBetMatches();renderBetStandings();renderBetTournamentStandings();renderResults();
+  const {error}=await supabase.from("matches").update({score_a:a,score_b:b,status,winner_id:winner}).eq("id",id);
+  if(error){Object.assign(m,previous);renderAll();alert(error.message);return}
+  try{
+    if(typeof updateRankingAfterMatch==="function")await updateRankingAfterMatch(m,a,b,winner);
+    if(typeof settleBets==="function")await settleBets(id);
+  }catch(err){console.error("La pelea finalizó, pero falló una tarea secundaria:",err)}
+  if(m.phase==="group")await autoGenerateKnockout(m.tournament_id);
   else await advanceKnockout(m.tournament_id,m.phase);
+  await refreshTournamentState(m.tournament_id);
+}
+
+async function refreshTournamentState(tid){
+  const [tournaments,participants,matches,rankings,bets]=await Promise.all([
+    supabase.from("tournaments").select("*").order("created_at",{ascending:false}),
+    supabase.from("tournament_participants").select("*"),
+    supabase.from("matches").select("*").order("created_at"),
+    supabase.from("rankings").select("*").order("elo",{ascending:false}),
+    supabase.from("bets").select("*").order("created_at",{ascending:false})
+  ]);
+  if(!tournaments.error)state.tournaments=tournaments.data||[];
+  if(!participants.error)state.participants=participants.data||[];
+  if(!matches.error)state.matches=matches.data||[];
+  if(!rankings.error)state.rankings=rankings.data||[];
+  if(!bets.error)state.bets=bets.data||[];
+  renderAll();
+  $("#adminTournamentSelect").value=tid;
+  $("#participantPanel").hidden=false;$("#matchAdminPanel").hidden=false;$("#knockoutPanel").hidden=false;
+  renderParticipantCards();renderMatchAdmin();renderKnockoutPanel();
+}
+function worldCupOpeningPairs(qualifiers,groups,q){
+  const byGroup=new Map(groups.map(g=>[g,qualifiers.filter(x=>x.group_no===g)]));
+  if(q===2 && groups.length%2===0){
+    const firstHalf=[],secondHalf=[];
+    for(let i=0;i<groups.length;i+=2){
+      const ga=groups[i],gb=groups[i+1],a=byGroup.get(ga)||[],b=byGroup.get(gb)||[];
+      if(a[0]&&b[1])firstHalf.push([a[0],b[1]]);
+      if(b[0]&&a[1])secondHalf.push([b[0],a[1]]);
+    }
+    return [...firstHalf,...secondHalf];
+  }
+  const remaining=[...qualifiers];
+  const pairs=[];
+  while(remaining.length){
+    const a=remaining.shift();
+    let index=remaining.findIndex(b=>b.group_no!==a.group_no);
+    if(index<0)index=0;
+    const b=remaining.splice(index,1)[0];
+    if(a&&b)pairs.push([a,b]);
+  }
+  return pairs;
 }
 
 async function autoGenerateKnockout(tid){
@@ -639,14 +708,12 @@ async function generateKnockoutRows(tid){
   }
 
   const phase=qualifiers.length===2?"final":qualifiers.length===4?"semifinal":"quarterfinal";
-  const rows=[];
-  for(let i=0;i<qualifiers.length;i+=2){
-    rows.push({tournament_id:tid,phase,round_no:1,side_a:qualifiers[i].id,side_b:qualifiers[i+1].id,status:"scheduled"});
-  }
+  const pairs=worldCupOpeningPairs(qualifiers,groups,q);
+  const rows=pairs.map(([a,b],i)=>({tournament_id:tid,phase,round_no:i+1,side_a:a.id,side_b:b.id,status:"scheduled"}));
   const {error}=await supabase.from("matches").insert(rows);
   if(error){alert(error.message);return}
   await supabase.from("tournaments").update({config:{...t.config,repechage,third_place:third}}).eq("id",tid);
-  await loadAll();$("#adminTournamentSelect").value=tid;renderMatchAdmin();renderKnockoutPanel();
+  await refreshTournamentState(tid);
 }
 async function advanceKnockout(tid,finishedPhase){
   const t=tournamentById(tid);if(!t)return;
@@ -862,7 +929,11 @@ $("#rewardDrawerButton").onclick=()=>$("#rewardDrawer").classList.toggle("open")
 $("#deliveryDrawerButton").onclick=()=>$("#deliveryDrawer").classList.toggle("open");
 
 for(const table of ["accounts","tournaments","tournament_participants","matches","bets","rewards","daily_spins","rankings"]){
-  supabase.channel("rt-"+table).on("postgres_changes",{event:"*",schema:"public",table},()=>loadAll()).subscribe();
+  supabase.channel("rt-"+table).on("postgres_changes",{event:"*",schema:"public",table},async payload=>{
+    const tid=payload.new?.tournament_id||payload.old?.tournament_id||$("#adminTournamentSelect")?.value;
+    if(["tournaments","tournament_participants","matches"].includes(table)&&tid)await refreshTournamentState(tid);
+    else await loadAll();
+  }).subscribe();
 }
 const saved=localStorage.getItem("liga_account");
 if(saved){const {data}=await supabase.from("accounts").select("*").eq("id",saved).maybeSingle();state.account=data||null}

@@ -52,7 +52,14 @@ function accountParticipatesInMatch(match,account=state.account){
 }
 function rankingFor(name){ return state.rankings.find(r=>r.name.toLowerCase()===String(name).toLowerCase()) || {elo:1000,wins:0,losses:0,kos_for:0,kos_against:0}; }
 
+async function removeExpiredRewards(){
+  const cutoff=new Date(Date.now()-7*24*60*60*1000).toISOString();
+  const {error}=await supabase.from("rewards").delete().eq("status","available").lt("created_at",cutoff);
+  if(error)console.error("No se pudieron eliminar recompensas vencidas:",error);
+}
+
 async function loadAll(){
+  await removeExpiredRewards();
   const [accounts,tournaments,participants,matches,bets,rewards,rankings] = await Promise.all([
     supabase.from("accounts").select("*").order("credits",{ascending:false}),
     supabase.from("tournaments").select("*").order("created_at",{ascending:false}),
@@ -1368,12 +1375,20 @@ $('#acceptPaidReward').onclick=async()=>{
   pendingPaidReward=null;$('#acceptPaidReward').hidden=true;$('#paidResult').textContent='Recompensa añadida.';await loadAll();
 };
 function renderRewards(){
-  const mine=state.account?state.rewards.filter(r=>r.account_id===state.account.id):[];
-  $("#myRewards").innerHTML=mine.map(r=>`<div class="card"><strong>${esc(r.label)}</strong><div class="muted">${esc(r.source)} · ${esc(r.status)}</div>${r.status==="available"?`<button data-request-reward="${r.id}">Reclamar</button>`:""}</div>`).join("")||'<div class="muted">No hay recompensas.</div>';
+  const mine=state.account?state.rewards.filter(r=>r.account_id===state.account.id&&r.status!=="claimed"):[];
+  $("#myRewards").innerHTML=mine.map(r=>`<div class="card"><strong>${esc(r.label)}</strong><div class="muted">${esc(r.source)} · ${esc(r.status)}</div><div class="reward-actions">${r.status==="available"?`<button data-request-reward="${r.id}">Reclamar</button>`:""}<button class="danger" data-discard-reward="${r.id}">Descartar</button></div></div>`).join("")||'<div class="muted">No hay recompensas.</div>';
   $$("[data-request-reward]").forEach(b=>b.onclick=async()=>{await supabase.from("rewards").update({status:"requested",requested_at:new Date().toISOString()}).eq("id",b.dataset.requestReward);loadAll()});
+  $$("[data-discard-reward]").forEach(b=>b.onclick=async()=>{
+    if(!confirm("¿Descartar esta recompensa? Esta acción no se puede deshacer."))return;
+    await supabase.from("rewards").delete().eq("id",b.dataset.discardReward);
+    loadAll();
+  });
   const requested=state.rewards.filter(r=>r.status==="requested");
   $("#deliveryList").innerHTML=requested.map(r=>{const a=state.accounts.find(x=>x.id===r.account_id);return`<div class="card"><strong>${esc(a?.username||"Cuenta")}</strong><div>${esc(r.label)}</div><button data-deliver="${r.id}">Confirmar entrega</button></div>`}).join("")||'<div class="muted">Sin solicitudes.</div>';
-  $$("[data-deliver]").forEach(b=>b.onclick=async()=>{await supabase.from("rewards").update({status:"claimed",claimed_at:new Date().toISOString()}).eq("id",b.dataset.deliver);loadAll()});
+  $$("[data-deliver]").forEach(b=>b.onclick=async()=>{
+    await supabase.from("rewards").delete().eq("id",b.dataset.deliver);
+    loadAll();
+  });
 }
 $("#rewardDrawerButton").onclick=()=>$("#rewardDrawer").classList.toggle("open");
 $("#deliveryDrawerButton").onclick=()=>$("#deliveryDrawer").classList.toggle("open");

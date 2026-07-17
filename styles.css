@@ -212,3 +212,5 @@ tr.bet-status-lost td{background:rgba(255,92,104,.035)}
 .weekly-daily-prizes .daily-prize-list{grid-template-columns:1fr;margin-top:0}
 .weekly-daily-prizes .daily-prize-chip{font-size:12px;padding:9px 10px}
 @media(max-width:780px){.daily-wheel-layout{grid-template-columns:1fr}.weekly-daily-prizes{margin-top:0;position:static}}
+
+.reward-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}

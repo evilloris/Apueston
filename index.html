@@ -55,7 +55,7 @@
 
   <section id="view-betting" class="view">
     <div class="panel">
-      <h2>Seleccionar torneo</h2>
+      <h2>Seleccionar evento</h2>
       <select id="betTournamentSelect"></select>
       <div id="betTournamentStandings" class="group-standings"></div>
     </div>
@@ -161,6 +161,21 @@
   </section>
 
   <section id="view-tournaments" class="view admin-only">
+
+    <div class="panel">
+      <h2>Peleas individuales 1v1 / 2v2</h2>
+      <p class="muted">Crea enfrentamientos sueltos para apostar. Se administran con los mismos controles de cuotas, horario y resultado, sin entrar en el sistema normal de torneos.</p>
+      <div class="grid">
+        <div><label>Nombre del evento</label><input id="individualEventName" placeholder="Ej: Reto amistoso"></div>
+        <div><label>Modalidad</label><select id="individualEventFormat"><option value="1v1">1 vs 1</option><option value="2v2">2 vs 2</option></select></div>
+        <div><label id="individualSideALabel">Jugador A</label><input id="individualA1" placeholder="Nombre o cuenta"></div>
+        <div data-individual-team-only hidden><label>Equipo A · jugador 2</label><input id="individualA2" placeholder="Nombre o cuenta"></div>
+        <div><label id="individualSideBLabel">Jugador B</label><input id="individualB1" placeholder="Nombre o cuenta"></div>
+        <div data-individual-team-only hidden><label>Equipo B · jugador 2</label><input id="individualB2" placeholder="Nombre o cuenta"></div>
+      </div>
+      <button id="createIndividualEvent" style="margin-top:12px">Crear pelea individual</button>
+      <div id="individualEventAdminList" class="grid" style="margin-top:14px"></div>
+    </div>
     <div class="panel">
       <h2>1. Crear torneo</h2>
       <div class="grid">
@@ -230,6 +245,6 @@
   </div>
 </div>
 
-<script type="module" src="./app.js?v=17"></script>
+<script type="module" src="./app.js?v=18"></script>
 </body>
 </html>

@@ -316,13 +316,13 @@ function renderGeneralStats(){
   $$('[data-reset-ranking]').forEach(b=>b.onclick=()=>resetRanking(b.dataset.resetRanking));
 }
 async function resetRanking(name){
-  if(!state.admin||!confirm(`¿Reiniciar ELO y estadísticas de ${name}?`))return;
+  if(!state.admin)return;
   const row={name,elo:1000,wins:0,losses:0,kos_for:0,kos_against:0};
   const {error}=await supabase.from("rankings").upsert(row,{onConflict:"name"});
   if(error){alert(error.message);return}await loadAll();
 }
 $("#resetAllRankings").onclick=async()=>{
-  if(!state.admin||!confirm("¿Reiniciar el ELO, victorias, derrotas y KO de todos los usuarios?"))return;
+  if(!state.admin)return;
   const rows=state.accounts.map(a=>({name:a.username,elo:1000,wins:0,losses:0,kos_for:0,kos_against:0}));
   if(!rows.length)return;
   const {error}=await supabase.from("rankings").upsert(rows,{onConflict:"name"});
@@ -363,7 +363,7 @@ function renderAccountsAdmin(){
   $("#accountAdminList").innerHTML=`<table><thead><tr><th>Cuenta</th><th>Saldo</th><th>Visible</th><th>Acciones</th></tr></thead><tbody>${rows||'<tr><td colspan="4">Sin cuentas.</td></tr>'}</tbody></table>`;
   $$("[data-visible]").forEach(x=>x.onchange=async()=>{await supabase.from("accounts").update({visible:x.checked}).eq("id",x.dataset.visible);loadAll()});
   $$("[data-reset]").forEach(x=>x.onclick=async()=>{const p=randomPassword();await supabase.from("accounts").update({password_hash:await sha256(p)}).eq("id",x.dataset.reset);alert("Nueva contraseña: "+p)});
-  $$("[data-delete-account]").forEach(x=>x.onclick=async()=>{if(confirm("¿Eliminar la cuenta y todos sus datos?")){await supabase.from("accounts").delete().eq("id",x.dataset.deleteAccount);loadAll()}});
+  $$("[data-delete-account]").forEach(x=>x.onclick=async()=>{{await supabase.from("accounts").delete().eq("id",x.dataset.deleteAccount);loadAll()}});
 }
 function renderCreditsAdmin(){
   const rows=state.accounts.map(a=>`<tr><td>${esc(a.username)}</td><td>${money(a.credits)}</td><td><input type="number" min="1" value="100" data-credit-input="${a.id}"></td><td><button data-add-credit="${a.id}">Sumar</button> <button class="danger" data-remove-credit="${a.id}">Retirar</button></td></tr>`).join("");
@@ -446,7 +446,7 @@ function renderTournamentsAdmin(){
     renderParticipantCards();renderMatchAdmin();renderKnockoutPanel();
   });
   $$("[data-delete-tournament]").forEach(b=>b.onclick=async()=>{
-    if(confirm("¿Eliminar torneo completo?")){
+    {
       await supabase.from("tournaments").delete().eq("id",b.dataset.deleteTournament);
       await loadAll();
     }
@@ -541,7 +541,7 @@ $("#saveParticipantsButton").onclick=async()=>{
   const {error}=await supabase.from("tournament_participants").insert(rows);
   if(error){alert(error.message);return}
   await loadAll();$("#adminTournamentSelect").value=tid;renderParticipantCards();
-  alert("Participantes guardados.");
+
 };
 
 $("#fairPairingButton").onclick=()=>{
@@ -677,7 +677,7 @@ async function clearManualOdds(id){
 async function saveSchedule(id){
   const value=document.querySelector(`[data-match-date="${id}"]`).value;
   const {error}=await supabase.from("matches").update({scheduled_at:value?new Date(value).toISOString():null}).eq("id",id);
-  if(error)alert(error.message);else alert("Fecha y hora guardadas.");
+  if(error)console.error(error);
 }
 async function startMatch(id){
   await supabase.from("matches").update({status:"live"}).eq("id",id);
@@ -786,33 +786,89 @@ async function autoGenerateKnockout(tid){
   if(mainExisting){renderKnockoutPanel();return}
   await generateKnockoutRows(tid);
 }
+function isPowerOfTwo(n){return n>0&&(n&(n-1))===0}
+function nextLowerPowerOfTwo(n){return 2**Math.floor(Math.log2(Math.max(1,n)))}
+function knockoutSeedOrder(qualifiers,groups,q){
+  const byGroup=new Map(groups.map(g=>[g,qualifiers.filter(x=>x.group_no===g)]));
+  if(groups.length===1)return qualifiers;
+  const ordered=[];
+  for(let rank=0;rank<q;rank++){
+    const gs=rank%2===0?groups:[...groups].reverse();
+    for(const g of gs){const item=byGroup.get(g)?.[rank];if(item)ordered.push(item)}
+  }
+  // Para 2 clasificados por grupo, esta distribución deja a los compañeros
+  // de grupo en mitades opuestas, por lo que solo pueden reencontrarse en la final.
+  if(q===2&&ordered.length>=4){
+    const first=groups.map(g=>byGroup.get(g)?.[0]).filter(Boolean);
+    const second=[...groups].reverse().map(g=>byGroup.get(g)?.[1]).filter(Boolean);
+    const pairs=[];
+    for(let i=0;i<first.length;i++)pairs.push(first[i],second[i]);
+    if(pairs.length===ordered.length)return pairs;
+  }
+  return ordered;
+}
+function repechageAllowed(t){
+  const groups=[...new Set(tournamentParticipants(t.id).map(p=>p.group_no))];
+  const total=groups.length*Number(t.config?.qualify_per_group||1);
+  return groups.length>1&&!isPowerOfTwo(total);
+}
 async function generateKnockoutRows(tid){
   const t=tournamentById(tid),q=Number(t.config?.qualify_per_group||1);
   const groups=[...new Set(tournamentParticipants(tid).map(p=>p.group_no))].sort((a,b)=>a-b);
   const table=standingsFor(tid);
-  // Solo clasifican los primeros N indicados al crear el torneo, por cada grupo.
   const qualifiers=groups.flatMap(g=>table.filter(x=>x.group_no===g).slice(0,q));
-  const third=t.config?.third_place!==false;
-  if(![2,4,8,16].includes(qualifiers.length)){
-    $("#bracketStatus").textContent=`Clasificaron ${qualifiers.length}. El total debe ser 2, 4, 8 o 16 para formar la llave.`;
-    return;
+  if(qualifiers.length<2)return;
+  if(tournamentMatches(tid).some(m=>["repechage","quarterfinal","semifinal","final"].includes(m.phase))){renderKnockoutPanel();return}
+
+  if(!isPowerOfTwo(qualifiers.length)){
+    if(!t.config?.repechage||!repechageAllowed(t)){
+      $("#bracketStatus").textContent=`Clasificaron ${qualifiers.length}. Activa el repechaje para reducir la llave a una potencia de 2.`;
+      return;
+    }
+    const target=nextLowerPowerOfTwo(qualifiers.length);
+    const playInMatches=qualifiers.length-target;
+    const seeded=knockoutSeedOrder(qualifiers,groups,q);
+    const byeCount=qualifiers.length-(playInMatches*2);
+    const byes=seeded.slice(0,byeCount).map(x=>x.id);
+    const playIn=seeded.slice(byeCount);
+    const rows=[];
+    for(let i=0;i<playIn.length;i+=2)rows.push({tournament_id:tid,phase:"repechage",round_no:1,side_a:playIn[i].id,side_b:playIn[i+1].id,status:"scheduled",base_odds:{knockout_byes:byes}});
+    const {data,error}=await supabase.from("matches").insert(rows).select();
+    if(error){console.error(error);return}
+    if(data?.length)state.matches.push(...data);
+    renderMatchAdmin();renderKnockoutPanel();renderBetMatches();return;
   }
-  if(tournamentMatches(tid).some(m=>["quarterfinal","semifinal","final"].includes(m.phase))){renderKnockoutPanel();return}
+
+  await createMainKnockout(tid,knockoutSeedOrder(qualifiers,groups,q));
+}
+async function createMainKnockout(tid,qualifiers){
+  if(!isPowerOfTwo(qualifiers.length)||qualifiers.length<2)return;
   const phase=qualifiers.length===2?"final":qualifiers.length===4?"semifinal":"quarterfinal";
   const rows=[];
-  // Cruce simple entre clasificados; nunca incluye a participantes fuera del top N.
-  for(let i=0;i<qualifiers.length;i+=2)rows.push({tournament_id:tid,phase,round_no:1,side_a:qualifiers[i].id,side_b:qualifiers[i+1].id,status:"scheduled"});
+  for(let i=0;i<qualifiers.length;i+=2){
+    const a=qualifiers[i].id||qualifiers[i],b=qualifiers[i+1].id||qualifiers[i+1];
+    rows.push({tournament_id:tid,phase,round_no:1,side_a:a,side_b:b,status:"scheduled"});
+  }
   const {data,error}=await supabase.from("matches").insert(rows).select();
-  if(error){alert(error.message);return}
+  if(error){console.error(error);return}
   if(data?.length)state.matches.push(...data);
-  await supabase.from("tournaments").update({config:{...t.config,third_place:third}}).eq("id",tid);
   $("#adminTournamentSelect").value=tid;
   renderMatchAdmin();renderKnockoutPanel();renderBetMatches();renderBetTournamentStandings();
 }
 async function advanceKnockout(tid,finishedPhase){
   const t=tournamentById(tid);if(!t)return;
   let rows=[];
-  if(finishedPhase==="quarterfinal"){
+  if(finishedPhase==="repechage"){
+    const reps=tournamentMatches(tid).filter(m=>m.phase==="repechage");
+    if(reps.length&&reps.every(m=>["finished","walkover"].includes(m.status))&&!tournamentMatches(tid).some(m=>["quarterfinal","semifinal","final"].includes(m.phase))){
+      const byes=Array.isArray(reps[0]?.base_odds?.knockout_byes)?reps[0].base_odds.knockout_byes:[];
+      const winners=reps.map(m=>m.winner_id);
+      const ids=[...byes,...winners];
+      const participants=ids.map(id=>state.participants.find(p=>p.id===id)).filter(Boolean);
+      await createMainKnockout(tid,participants);
+      return;
+    }
+  }else if(finishedPhase==="quarterfinal"){
     const matches=tournamentMatches(tid).filter(m=>m.phase==="quarterfinal");
     if(matches.length&&matches.every(m=>["finished","walkover"].includes(m.status))&&!tournamentMatches(tid).some(m=>m.phase==="semifinal")){
       const winners=matches.map(m=>m.winner_id);
@@ -839,7 +895,10 @@ async function advanceKnockout(tid,finishedPhase){
 }
 function renderKnockoutPanel(){
   const tid=$("#adminTournamentSelect").value,t=tournamentById(tid);if(!t)return;
-  $("#enableRepechage").checked=!!t.config?.repechage;
+  const canRepechage=repechageAllowed(t);
+  $("#enableRepechage").disabled=!canRepechage;
+  $("#enableRepechage").checked=canRepechage&&!!t.config?.repechage;
+  $("#enableRepechage").closest("label").title=canRepechage?"Disponible para ajustar la cantidad de clasificados.":"Solo está disponible con varios grupos y cuando los clasificados no forman una potencia de 2.";
   $("#enableThirdPlace").checked=t.config?.third_place!==false;
   const done=isGroupStageComplete(tid);
   $("#bracketStatus").textContent=done?"La fase de grupos terminó. Las eliminatorias se generan automáticamente.":"Las eliminatorias aparecerán al finalizar todas las peleas de grupos.";
@@ -851,9 +910,11 @@ function renderKnockoutPanel(){
   </div>`).join("")||'<div class="muted">Aún no hay cruces eliminatorios.</div>';
 }
 $("#enableRepechage").onchange=async()=>{
-  const tid=$("#adminTournamentSelect").value,t=tournamentById(tid);if(!t)return;
-  await supabase.from("tournaments").update({config:{...t.config,repechage:$("#enableRepechage").checked}}).eq("id",tid);
-  await loadAll();$("#adminTournamentSelect").value=tid;renderKnockoutPanel();
+  const tid=$("#adminTournamentSelect").value,t=tournamentById(tid);if(!t||!repechageAllowed(t))return;
+  t.config={...t.config,repechage:$("#enableRepechage").checked};
+  renderKnockoutPanel();
+  const {error}=await supabase.from("tournaments").update({config:t.config}).eq("id",tid);
+  if(error){console.error(error);return}
   if(isGroupStageComplete(tid))await autoGenerateKnockout(tid);
 };
 $("#enableThirdPlace").onchange=async()=>{
@@ -905,7 +966,7 @@ function renderPvpEvents(){
   $$('[data-save-odds]').forEach(b=>b.onclick=()=>saveManualOdds(b.dataset.saveOdds));
   $$('[data-clear-odds]').forEach(b=>b.onclick=()=>clearManualOdds(b.dataset.clearOdds));
   $$('[data-live-score]').forEach(input=>input.oninput=()=>queueLiveScoreSave(input.dataset.liveScore));
-  $$('[data-delete-pvp]').forEach(b=>b.onclick=async()=>{if(confirm("¿Eliminar esta pelea individual?")){await supabase.from("tournaments").delete().eq("id",b.dataset.deletePvp);await loadAll()}});
+  $$('[data-delete-pvp]').forEach(b=>b.onclick=async()=>{{await supabase.from("tournaments").delete().eq("id",b.dataset.deletePvp);await loadAll()}});
 }
 renderPvpSides();
 
@@ -980,6 +1041,13 @@ function drawWheel(el,items){
   const colors=["#ef476f","#4d8dff","#33d17a","#ad7cff","#f5bd16","#ff8c42","#00a6a6"];
   const step=360/items.length;
   el.style.background=`conic-gradient(${items.map((item,i)=>`${colors[i%colors.length]} ${i*step}deg ${(i+1)*step}deg`).join(",")})`;
+  el.innerHTML=items.map((item,i)=>{
+    const angle=i*step+step/2;
+    const text=String(item.label||"").replace(/ Pokémon/i," PKM");
+    return `<span class="wheel-label" style="--angle:${angle}deg"><b>${esc(text)}</b></span>`;
+  }).join("");
+  const wrap=el.closest(".wheel-wrap");
+  if(wrap&&!wrap.querySelector(".wheel-pointer"))wrap.insertAdjacentHTML("afterbegin",'<div class="wheel-pointer" aria-hidden="true"></div>');
 }
 function renderDailyPrizeSlots(){
   const root=$("#dailyPrizeSlots");if(!root)return;

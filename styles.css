@@ -149,3 +149,13 @@ table{min-width:620px}
 .drawer{z-index:60;box-shadow:0 12px 40px #000a;overflow:auto}
 .drawer-button{z-index:61;pointer-events:auto}
 @media(max-width:620px){.wheel-actions{display:grid}.wheel-actions>*{width:100%}.prize-slots{grid-template-columns:1fr 1fr}}
+
+/* Ruletas v9: etiquetas visibles y puntero */
+.wheel-wrap{padding-top:18px}
+.wheel{position:relative;overflow:hidden}
+.wheel::after{content:"";position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at center,transparent 0 31%,rgba(0,0,0,.08) 32% 100%);pointer-events:none}
+.wheel-label{--angle:0deg;position:absolute;left:50%;top:50%;width:43%;height:26px;display:flex;align-items:center;justify-content:flex-end;transform-origin:0 50%;transform:rotate(var(--angle)) translateX(12%) rotate(90deg);font-size:10px;line-height:1;text-align:right;color:#fff;text-shadow:0 1px 3px #000,0 0 2px #000;z-index:2;pointer-events:none}
+.wheel-label b{display:block;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wheel-pointer{position:absolute;top:2px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:15px solid transparent;border-right:15px solid transparent;border-top:0;border-bottom:28px solid var(--gold);z-index:5;filter:drop-shadow(0 2px 2px #000)}
+#enableRepechage:disabled+span{opacity:.5}
+@media(max-width:520px){.wheel-label{font-size:8px}.wheel-label b{max-width:80px}}

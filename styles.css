@@ -167,3 +167,12 @@ table{min-width:620px}
 @media(max-width:760px){.odds-admin-row{grid-template-columns:1fr 1fr}.odds-admin-row button{width:100%}}
 
 .locked-user-odds{margin-top:8px;padding:7px 10px;border:1px solid rgba(255,255,255,.16);border-radius:10px;font-size:.82rem;font-weight:700;opacity:.9}
+
+/* v15: estados de apuestas en español */
+.bet-status{display:inline-flex;align-items:center;justify-content:center;padding:4px 9px;border-radius:999px;font-size:.78rem;font-weight:900;border:1px solid currentColor}
+.bet-status-pending{color:#f5bd16;background:rgba(245,189,22,.10)}
+.bet-status-won{color:#38d77a;background:rgba(56,215,122,.12)}
+.bet-status-lost{color:#ff5c68;background:rgba(255,92,104,.12)}
+.bet-status-refunded{color:#8fb7ff;background:rgba(143,183,255,.12)}
+tr.bet-status-won td{background:rgba(56,215,122,.035)}
+tr.bet-status-lost td{background:rgba(255,92,104,.035)}

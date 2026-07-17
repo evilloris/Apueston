@@ -154,10 +154,13 @@ function clamp(value,min,max){return Math.max(min,Math.min(max,value))}
 function scoreProbabilityShift(diff){
   const d=Math.abs(Number(diff)||0);
   if(d<=0)return 0;
-  if(d<=2)return d*0.025;              // 1 -> 2.5%, 2 -> 5%
-  if(d<=4)return 0.05+(d-2)*0.045;     // 3 -> 9.5%, 4 -> 14%
-  if(d<=6)return 0.14+(d-4)*0.105;     // 5 -> 24.5%, 6 -> 35%
-  return Math.min(0.52,0.35+(d-6)*0.045);
+  if(d===1)return 0.04;  // diferencia 1: cambio visible
+  if(d===2)return 0.08;  // diferencia 2: cambio mayor
+  if(d===3)return 0.15;  // diferencia 3: incremento medio
+  if(d===4)return 0.24;  // diferencia 4: incremento medio-alto
+  if(d===5)return 0.38;  // diferencia 5: incremento muy alto
+  if(d===6)return 0.52;  // diferencia 6: cuota del perdedor se dispara
+  return Math.min(0.72,0.52+(d-6)*0.06);
 }
 function dynamicOdds(match){
   const sideA=state.participants.find(p=>p.id===match.side_a),sideB=state.participants.find(p=>p.id===match.side_b);
@@ -299,9 +302,24 @@ $("#confirmBet").onclick=async()=>{
   // Sincroniza en segundo plano con Supabase.
   loadAll();
 };
+function betStatusInfo(status){
+  const map={
+    pending:{label:'Pendiente',className:'bet-status-pending'},
+    won:{label:'Ganada',className:'bet-status-won'},
+    lost:{label:'Perdida',className:'bet-status-lost'},
+    refunded:{label:'Reembolsada',className:'bet-status-refunded'}
+  };
+  return map[status]||{label:String(status||'Pendiente'),className:'bet-status-pending'};
+}
+function betTypeLabel(type){
+  return ({winner:'Ganador',handicap:'Hándicap',score:'Marcador exacto',parlay:'Combinada',champion:'Campeón'})[type]||type;
+}
 function renderMyBets(){
   if(!state.account){$("#myBets").innerHTML='<div class="muted">Inicia sesión.</div>';return}
-  const rows=state.bets.filter(b=>b.account_id===state.account.id).map(b=>`<tr><td>${esc(b.bet_type)}</td><td>${money(b.stake)}</td><td>x${b.locked_odds}</td><td>${esc(b.status)}</td><td>${money(b.payout||0)}</td></tr>`).join("");
+  const rows=state.bets.filter(b=>b.account_id===state.account.id).map(b=>{
+    const info=betStatusInfo(b.status);
+    return `<tr class="${info.className}"><td>${esc(betTypeLabel(b.bet_type))}</td><td>${money(b.stake)}</td><td>x${Number(b.locked_odds).toFixed(3)}</td><td><span class="bet-status ${info.className}">${esc(info.label)}</span></td><td>${money(b.payout||0)}</td></tr>`;
+  }).join("");
   $("#myBets").innerHTML=`<table><thead><tr><th>Tipo</th><th>Monto</th><th>Cuota</th><th>Estado</th><th>Pago</th></tr></thead><tbody>${rows||'<tr><td colspan="5">Sin apuestas.</td></tr>'}</tbody></table>`;
 }
 

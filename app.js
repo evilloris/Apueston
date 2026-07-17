@@ -16,6 +16,7 @@ let state = {
 let pendingPaidReward = null;
 let wheelRotation = 0;
 let parlayCart = [];
+let dailyCountdownTimer = null;
 
 async function sha256(text){
   const bytes = new TextEncoder().encode(text);
@@ -1097,6 +1098,36 @@ function weeklyDailyPrizes(){
   ];
 }
 const dailyPrizes=weeklyDailyPrizes();
+function renderWeeklyDailyPrizes(){
+  const list=$('#weeklyDailyPrizeList');
+  if(!list)return;
+  list.innerHTML=dailyPrizes.map((prize,index)=>`<div class="daily-prize-chip"><strong>${index+1}.</strong> ${esc(prize.label)}</div>`).join('');
+}
+function millisecondsUntilNextDailySpin(){
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:CONFIG.DAILY_WHEEL_TIMEZONE,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+  const values=Object.fromEntries(parts.map(part=>[part.type,part.value]));
+  const nextMidnightBoliviaUtc=Date.UTC(Number(values.year),Number(values.month)-1,Number(values.day)+1,4,0,0);
+  return Math.max(0,nextMidnightBoliviaUtc-Date.now());
+}
+function formatDailyCountdown(ms){
+  const total=Math.max(0,Math.floor(ms/1000));
+  const hours=Math.floor(total/3600);
+  const minutes=Math.floor((total%3600)/60);
+  const seconds=total%60;
+  return `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;
+}
+function startDailyCountdown(){
+  clearInterval(dailyCountdownTimer);
+  const button=$('#spinDailyButton');
+  if(!button)return;
+  const tick=()=>{
+    const remaining=millisecondsUntilNextDailySpin();
+    if(remaining<=0){clearInterval(dailyCountdownTimer);updateDailyButton();return}
+    button.textContent=`Próximo giro en ${formatDailyCountdown(remaining)}`;
+  };
+  tick();
+  dailyCountdownTimer=setInterval(tick,1000);
+}
 const paidCategories=[
   {label:'Pokémon común',weight:82,key:'common'},
   {label:'Pokémon inicial',weight:13,key:'hard'},
@@ -1127,9 +1158,13 @@ async function animateDailyPrizeReel(finalPrize){
   await wait(250);
 }
 async function updateDailyButton(){
-  if(!state.account){$('#spinDailyButton').disabled=true;return}
+  const button=$('#spinDailyButton');
+  clearInterval(dailyCountdownTimer);
+  if(!state.account){button.disabled=true;button.textContent='Girar una vez al día';return}
   const {data}=await supabase.from('daily_spins').select('account_id').eq('account_id',state.account.id).eq('spin_date',todayBolivia()).maybeSingle();
-  $('#spinDailyButton').disabled=!!data;$('#spinDailyButton').textContent=data?'Giro diario usado':'Girar una vez al día';
+  button.disabled=!!data;
+  if(data)startDailyCountdown();
+  else button.textContent='Girar una vez al día';
 }
 async function grantWheelReward(prize,source){
   const label=prize.rewardLabel||prize.label;
@@ -1232,6 +1267,8 @@ setInterval(()=>{
   if(bettingActive)renderBetMatches();
   if(document.querySelector('#betModal.open'))updateBetPreview();
 },1000);
+
+renderWeeklyDailyPrizes();
 
 const saved=localStorage.getItem("liga_account");
 if(saved){const {data}=await supabase.from("accounts").select("*").eq("id",saved).maybeSingle();state.account=data||null}

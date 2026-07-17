@@ -203,3 +203,12 @@ tr.bet-status-lost td{background:rgba(255,92,104,.035)}
 /* La ruleta diaria usa el mismo selector visual de nombres que la ruleta de 100 créditos. */
 .daily-prize-reel .reel-selector{min-height:104px}
 .daily-prize-reel .reel-selector strong{max-width:100%;overflow-wrap:anywhere}
+
+/* Lista semanal junto a la ruleta diaria. */
+.daily-wheel-layout{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(220px,.75fr);gap:18px;align-items:start}
+.daily-wheel-layout .pokemon-reel{margin-top:18px}
+.weekly-daily-prizes{margin-top:18px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--panel2)}
+.weekly-daily-prizes h3{margin:0 0 10px;color:var(--gold);font-size:16px}
+.weekly-daily-prizes .daily-prize-list{grid-template-columns:1fr;margin-top:0}
+.weekly-daily-prizes .daily-prize-chip{font-size:12px;padding:9px 10px}
+@media(max-width:780px){.daily-wheel-layout{grid-template-columns:1fr}.weekly-daily-prizes{margin-top:0}}

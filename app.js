@@ -1106,14 +1106,28 @@ const paidCategories=[
 function weightedPick(items){let r=Math.random()*items.reduce((sum,item)=>sum+item.weight,0);for(const item of items){r-=item.weight;if(r<=0)return item}return items[items.length-1]}
 function createPaidPokemonPrize(){const category=weightedPick(paidCategories);return createPaidPokemonPrizeForCategory(category.key)}
 function drawWheel(el,items){
-  const list=$('#dailyPrizeList');
-  if(list)list.innerHTML=items.map((item,index)=>`<div class="daily-prize-chip"><strong>${index+1}.</strong> ${esc(item.label)}</div>`).join('');
+  const colors=['#ef476f','#4d8dff','#33d17a','#ad7cff','#f5bd16','#ff8c42','#00a6a6'],step=360/items.length;
+  el.style.background=`conic-gradient(${items.map((item,index)=>`${colors[index%colors.length]} ${index*step}deg ${(index+1)*step}deg`).join(',')})`;
+  el.innerHTML=items.map((item,index)=>`<div class="daily-wheel-label" style="transform:rotate(${index*step+step/2}deg)"><span>${esc(item.label)}</span></div>`).join('');
+  const list=$('#dailyPrizeList');if(list)list.innerHTML=items.map((item,index)=>`<div class="daily-prize-chip"><strong>${index+1}.</strong> ${esc(item.label)}</div>`).join('');
 }
 drawWheel($('#dailyWheel'),dailyPrizes);
 async function spinVisual(el,items,forcedPick=null){
-  const pick=forcedPick||weightedPick(items);
-  await animatePaidPokemonReel({pokemon:pick.label,category:'',categoryKey:'common'});
-  return pick;
+const pick=forcedPick||weightedPick(items);
+const names=[...el.querySelectorAll('.wheel-segment')];
+let index=0;
+const delays=[40,45,50,55,60,70,80,95,110,130,160,200,260,340];
+for(const d of delays){
+ names.forEach(n=>n.style.background='');
+ names[index%names.length].style.background='#2d6cdf';
+ index++;
+ await new Promise(r=>setTimeout(r,d));
+}
+const final=items.indexOf(pick);
+names.forEach(n=>n.style.background='');
+if(names[final]) names[final].style.background='#2ecc71';
+await new Promise(r=>setTimeout(r,300));
+return pick;
 }
 async function updateDailyButton(){
   if(!state.account){$('#spinDailyButton').disabled=true;return}

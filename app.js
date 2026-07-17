@@ -146,10 +146,46 @@ $("#betTournamentSelect").onchange=()=>{renderBetMatches();renderBetStandings()}
 $("#resultTournamentSelect").onchange=renderResults;
 $("#adminTournamentSelect").onchange=()=>{renderParticipantList();renderMatchAdmin();$("#participantPanel").hidden=false;$("#matchAdminPanel").hidden=false};
 
+function participantAverageElo(participant){
+  const members=Array.isArray(participant?.members)&&participant.members.length?participant.members:[{name:participant?.display_name}];
+  return members.reduce((sum,m)=>sum+rankingFor(m.name).elo,0)/Math.max(1,members.length);
+}
+function clamp(value,min,max){return Math.max(min,Math.min(max,value))}
+function scoreProbabilityShift(diff){
+  const d=Math.abs(Number(diff)||0);
+  if(d<=0)return 0;
+  if(d<=2)return d*0.02;               // 1 -> 2%, 2 -> 4%
+  if(d<=4)return 0.04+(d-2)*0.035;     // 3 -> 7.5%, 4 -> 11%
+  if(d<=6)return 0.11+(d-4)*0.07;      // 5 -> 18%, 6 -> 25%
+  return Math.min(0.40,0.25+(d-6)*0.035);
+}
 function dynamicOdds(match){
-  const a=state.participants.find(p=>p.id===match.side_a),b=state.participants.find(p=>p.id===match.side_b);
-  const ra=rankingFor(a?.display_name).elo, rb=rankingFor(b?.display_name).elo;
-  return oddsFromElo(ra,rb);
+  const sideA=state.participants.find(p=>p.id===match.side_a),sideB=state.participants.find(p=>p.id===match.side_b);
+  const eloA=participantAverageElo(sideA),eloB=participantAverageElo(sideB);
+  let pA;
+  const manual=match.base_odds?.mode==='manual'&&Number(match.base_odds?.a)>1&&Number(match.base_odds?.b)>1;
+  if(manual){
+    const ia=1/Number(match.base_odds.a),ib=1/Number(match.base_odds.b);
+    pA=ia/(ia+ib);
+  }else pA=expected(eloA,eloB);
+
+  // Presión moderada por dinero apostado. Solo cuenta apuestas pendientes al ganador.
+  const winnerBets=state.bets.filter(b=>b.match_id===match.id&&b.bet_type==='winner'&&b.status==='pending');
+  const stakeA=winnerBets.filter(b=>b.selection?.participant_id===match.side_a).reduce((n,b)=>n+Number(b.stake||0),0);
+  const stakeB=winnerBets.filter(b=>b.selection?.participant_id===match.side_b).reduce((n,b)=>n+Number(b.stake||0),0);
+  const total=stakeA+stakeB;
+  if(total>0)pA+=((stakeA-stakeB)/total)*0.06;
+
+  // El marcador mueve la probabilidad de manera continua: poco (1-2), medio (3-4), alto (5-6).
+  const diff=(Number(match.score_a)||0)-(Number(match.score_b)||0);
+  if(match.status==='live'&&diff!==0)pA+=Math.sign(diff)*scoreProbabilityShift(diff);
+
+  pA=clamp(pA,0.015,0.985);
+  const payoutFactor=0.94;
+  return {
+    a:Math.max(1.001,+(payoutFactor/pA).toFixed(3)),
+    b:Math.max(1.001,+(payoutFactor/(1-pA)).toFixed(3))
+  };
 }
 
 function bindGroupAccordions(container){
@@ -539,6 +575,8 @@ function renderMatchAdmin(){
   $$("[data-finish-match]").forEach(b=>b.onclick=()=>finishMatch(b.dataset.finishMatch,false));
   $$("[data-walkover-a]").forEach(b=>b.onclick=()=>finishMatch(b.dataset.walkoverA,true,"a"));
   $$("[data-walkover-b]").forEach(b=>b.onclick=()=>finishMatch(b.dataset.walkoverB,true,"b"));
+  $$(`[data-save-manual-odds]`).forEach(b=>b.onclick=()=>saveManualOdds(b.dataset.saveManualOdds));
+  $$(`[data-auto-odds]`).forEach(b=>b.onclick=()=>useAutomaticOdds(b.dataset.autoOdds));
   $$("[data-save-schedule]").forEach(b=>b.onclick=()=>saveSchedule(b.dataset.saveSchedule));
   $$("[data-score-a],[data-score-b]").forEach(input=>input.addEventListener("input",()=>queueLiveScore(input.dataset.scoreA||input.dataset.scoreB)));
 }
@@ -554,6 +592,13 @@ function matchCardAdmin(m){
     </div>
     <div class="fight-vs">
       <span>${esc(participantName(m.side_a))}</span><span class="vs">VS</span><span>${esc(participantName(m.side_b))}</span>
+    </div>
+    <div class="odds-admin-row">
+      <label>Cuota base A<input type="number" min="1.001" step="0.001" data-manual-odds-a="${m.id}" value="${m.base_odds?.mode==='manual'?Number(m.base_odds.a).toFixed(3):''}" placeholder="Automática ELO"></label>
+      <label>Cuota base B<input type="number" min="1.001" step="0.001" data-manual-odds-b="${m.id}" value="${m.base_odds?.mode==='manual'?Number(m.base_odds.b).toFixed(3):''}" placeholder="Automática ELO"></label>
+      <button class="secondary" data-save-manual-odds="${m.id}">Guardar cuotas</button>
+      <button class="secondary" data-auto-odds="${m.id}">Usar ELO</button>
+      <small class="muted">Actual: x${dynamicOdds(m).a} / x${dynamicOdds(m).b}</small>
     </div>
     <div class="fight-controls">
       ${done?`<div class="card"><strong>Resultado: ${m.score_a??0} - ${m.score_b??0}</strong> · ${m.status==="walkover"?"Walkover":"Finalizada"}</div>`:
@@ -585,6 +630,24 @@ function queueLiveScore(id){
   },220));
 }
 
+async function saveManualOdds(id){
+  const a=Number(document.querySelector(`[data-manual-odds-a="${id}"]`)?.value);
+  const b=Number(document.querySelector(`[data-manual-odds-b="${id}"]`)?.value);
+  if(!Number.isFinite(a)||!Number.isFinite(b)||a<1.001||b<1.001){alert('Ambas cuotas deben ser 1.001 o mayores.');return}
+  const match=state.matches.find(m=>m.id===id);if(!match)return;
+  match.base_odds={mode:'manual',a:+a.toFixed(3),b:+b.toFixed(3)};
+  renderMatchAdmin();renderBetMatches();
+  const {error}=await supabase.from('matches').update({base_odds:match.base_odds}).eq('id',id);
+  if(error){console.error(error);await refreshTournamentState(match.tournament_id)}
+}
+async function useAutomaticOdds(id){
+  const match=state.matches.find(m=>m.id===id);if(!match)return;
+  match.base_odds={mode:'elo'};
+  renderMatchAdmin();renderBetMatches();
+  const {error}=await supabase.from('matches').update({base_odds:match.base_odds}).eq('id',id);
+  if(error){console.error(error);await refreshTournamentState(match.tournament_id)}
+}
+
 async function saveSchedule(id){
   const value=document.querySelector(`[data-match-date="${id}"]`).value;
   const {error}=await supabase.from("matches").update({scheduled_at:value?new Date(value).toISOString():null}).eq("id",id);
@@ -597,6 +660,61 @@ async function startMatch(id){
   const {error}=await supabase.from("matches").update({status:"live",score_a:m.score_a,score_b:m.score_b}).eq("id",id);
   if(error){console.error(error);await loadAll()}
 }
+function participantMemberNames(participant){
+  if(Array.isArray(participant?.members)&&participant.members.length)return participant.members.map(m=>m.name).filter(Boolean);
+  return participant?.display_name?[participant.display_name]:[];
+}
+async function updateRankingAfterMatch(match,scoreA,scoreB,winnerId){
+  const sideA=state.participants.find(p=>p.id===match.side_a),sideB=state.participants.find(p=>p.id===match.side_b);
+  if(!sideA||!sideB)return;
+  const namesA=participantMemberNames(sideA),namesB=participantMemberNames(sideB);
+  const avgA=namesA.reduce((n,name)=>n+rankingFor(name).elo,0)/Math.max(1,namesA.length);
+  const avgB=namesB.reduce((n,name)=>n+rankingFor(name).elo,0)/Math.max(1,namesB.length);
+  const tournament=state.tournaments.find(t=>t.id===match.tournament_id);
+  const isTeam=tournament?.format==='2v2'||namesA.length>1||namesB.length>1;
+  const isIndividualEvent=!!(tournament?.config?.event_type==='individual'||tournament?.config?.individual);
+  const baseK=isTeam?14:24;
+  const multiplier=isIndividualEvent?1:2;
+  const winA=winnerId===match.side_a;
+  const rows=[];
+  for(const [names,oppAvg,won,kf,ka] of [[namesA,avgB,winA,scoreA,scoreB],[namesB,avgA,!winA,scoreB,scoreA]]){
+    for(const name of names){
+      const current=rankingFor(name),exp=expected(current.elo,oppAvg);
+      const koImpact=clamp((Number(kf)-Number(ka))*0.9,-7,7);
+      const delta=Math.round(((baseK*(Number(won)-exp))+koImpact)*multiplier);
+      rows.push({name,elo:Math.max(100,current.elo+delta),wins:current.wins+(won?1:0),losses:current.losses+(won?0:1),kos_for:current.kos_for+Number(kf||0),kos_against:current.kos_against+Number(ka||0)});
+    }
+  }
+  const {error}=await supabase.from('rankings').upsert(rows,{onConflict:'name'});
+  if(error)throw error;
+  for(const row of rows){const i=state.rankings.findIndex(r=>r.name.toLowerCase()===row.name.toLowerCase());if(i>=0)state.rankings[i]={...state.rankings[i],...row};else state.rankings.push(row)}
+  state.rankings.sort((a,b)=>b.elo-a.elo);
+  renderGeneralStats();renderBetMatches();
+}
+async function settleBets(matchId){
+  const match=state.matches.find(m=>m.id===matchId);if(!match)return;
+  const bets=state.bets.filter(b=>b.match_id===matchId&&b.status==='pending');
+  for(const bet of bets){
+    let won=false;
+    if(bet.bet_type==='winner')won=bet.selection?.participant_id===match.winner_id;
+    else if(bet.bet_type==='score')won=Number(bet.selection?.score_a)===Number(match.score_a)&&Number(bet.selection?.score_b)===Number(match.score_b);
+    else if(bet.bet_type==='handicap'){
+      const selected=bet.selection?.participant_id,line=Number(bet.selection?.line||0);
+      const selectedScore=selected===match.side_a?Number(match.score_a):Number(match.score_b);
+      const otherScore=selected===match.side_a?Number(match.score_b):Number(match.score_a);
+      won=selectedScore+line>otherScore;
+    }
+    const payout=won?Math.floor(Number(bet.stake)*Number(bet.locked_odds)):0;
+    await supabase.from('bets').update({status:won?'won':'lost',payout}).eq('id',bet.id);
+    bet.status=won?'won':'lost';bet.payout=payout;
+    if(won){
+      const account=state.accounts.find(a=>a.id===bet.account_id);
+      if(account){account.credits+=payout;await supabase.from('accounts').update({credits:account.credits}).eq('id',account.id)}
+    }
+  }
+  renderMyBets();renderLeaderboard();
+}
+
 async function finishMatch(id,walkover=false,side=null){
   const m=state.matches.find(x=>x.id===id);if(!m)return;
   let a=0,b=0,winner=null,status="finished";
@@ -614,7 +732,7 @@ async function finishMatch(id,walkover=false,side=null){
   const {error}=await supabase.from("matches").update({score_a:a,score_b:b,status,winner_id:winner}).eq("id",id);
   if(error){Object.assign(m,previous);renderAll();alert(error.message);return}
   try{
-    if(typeof updateRankingAfterMatch==="function")await updateRankingAfterMatch(m,a,b,winner);
+    if(!["finished","walkover"].includes(previous.status))await updateRankingAfterMatch(m,a,b,winner);
     if(typeof settleBets==="function")await settleBets(id);
   }catch(err){console.error("La pelea finalizó, pero falló una tarea secundaria:",err)}
   if(m.phase==="group")await autoGenerateKnockout(m.tournament_id);
@@ -935,6 +1053,12 @@ for(const table of ["accounts","tournaments","tournament_participants","matches"
     else await loadAll();
   }).subscribe();
 }
+setInterval(()=>{
+  const bettingActive=document.querySelector('#view-betting.active');
+  if(bettingActive)renderBetMatches();
+  if(document.querySelector('#betModal.open'))updateBetPreview();
+},1000);
+
 const saved=localStorage.getItem("liga_account");
 if(saved){const {data}=await supabase.from("accounts").select("*").eq("id",saved).maybeSingle();state.account=data||null}
 await loadAll();

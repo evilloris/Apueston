@@ -565,11 +565,44 @@ function individualMemberFromName(name){
   const account=state.accounts.find(a=>String(a.username).toLowerCase()===clean.toLowerCase());
   return account?{type:"account",id:account.id,name:account.username}:{type:"bot",name:clean};
 }
+let individual2v2AutoBalanced=false;
 function syncIndividualEventFields(){
   const team=$("#individualEventFormat")?.value==="2v2";
-  $$("[data-individual-team-only]").forEach(el=>el.hidden=!team);
+  $$('[data-individual-team-only]').forEach(el=>el.hidden=!team);
   if($("#individualSideALabel"))$("#individualSideALabel").textContent=team?"Equipo A · jugador 1":"Jugador A";
   if($("#individualSideBLabel"))$("#individualSideBLabel").textContent=team?"Equipo B · jugador 1":"Jugador B";
+  individual2v2AutoBalanced=false;
+}
+function balanceIndividual2v2(showAlert=false){
+  const fields=["#individualA1","#individualA2","#individualB1","#individualB2"];
+  const players=fields.map(id=>({name:$(id).value.trim()}));
+  if(players.some(p=>!p.name)){
+    if(showAlert)alert("Completa los cuatro participantes antes de ordenar los equipos.");
+    return false;
+  }
+  const repeated=new Set();
+  for(const player of players){
+    const key=player.name.toLowerCase();
+    if(repeated.has(key)){if(showAlert)alert(`El participante ${player.name} está repetido.`);return false}
+    repeated.add(key);
+    player.elo=rankingFor(player.name).elo;
+  }
+  const arrangements=[
+    [[0,1],[2,3]],
+    [[0,2],[1,3]],
+    [[0,3],[1,2]]
+  ];
+  const best=arrangements.map(([a,b])=>{
+    const eloA=(players[a[0]].elo+players[a[1]].elo)/2;
+    const eloB=(players[b[0]].elo+players[b[1]].elo)/2;
+    return {a,b,eloA,eloB,diff:Math.abs(eloA-eloB)};
+  }).sort((x,y)=>x.diff-y.diff)[0];
+  const ordered=[players[best.a[0]],players[best.a[1]],players[best.b[0]],players[best.b[1]]];
+  fields.forEach((id,i)=>$(id).value=ordered[i].name);
+  const info=$("#individual2v2BalanceInfo");
+  if(info)info.textContent=`Equipo A: ${Math.round(best.eloA)} ELO promedio · Equipo B: ${Math.round(best.eloB)} · diferencia ${Math.round(best.diff)}`;
+  individual2v2AutoBalanced=true;
+  return true;
 }
 async function createIndividualEvent(){
   const format=$("#individualEventFormat").value;
@@ -577,6 +610,7 @@ async function createIndividualEvent(){
   const names=[$("#individualA1").value.trim(),$("#individualA2").value.trim(),$("#individualB1").value.trim(),$("#individualB2").value.trim()];
   const required=format==="2v2"?[names[0],names[1],names[2],names[3]]:[names[0],names[2]];
   if(required.some(n=>!n)){alert(format==="2v2"?"Completa los cuatro integrantes.":"Completa ambos jugadores.");return}
+  if(format==="2v2"&&!individual2v2AutoBalanced){balanceIndividual2v2(false);names.splice(0,4,$("#individualA1").value.trim(),$("#individualA2").value.trim(),$("#individualB1").value.trim(),$("#individualB2").value.trim())}
   const sideAMembers=(format==="2v2"?[names[0],names[1]]:[names[0]]).map(individualMemberFromName);
   const sideBMembers=(format==="2v2"?[names[2],names[3]]:[names[2]]).map(individualMemberFromName);
   const displayA=sideAMembers.map(m=>m.name).join(" + "),displayB=sideBMembers.map(m=>m.name).join(" + ");
@@ -591,6 +625,7 @@ async function createIndividualEvent(){
   const {error:mError}=await supabase.from("matches").insert({tournament_id:t.id,phase:"final",round_no:1,side_a:participants[0].id,side_b:participants[1].id,status:"scheduled"});
   if(mError){await supabase.from("tournaments").delete().eq("id",t.id);alert(mError.message);return}
   $("#individualEventName").value="";["#individualA1","#individualA2","#individualB1","#individualB2"].forEach(id=>$(id).value="");
+  individual2v2AutoBalanced=false;if($("#individual2v2BalanceInfo"))$("#individual2v2BalanceInfo").textContent="Completa los cuatro participantes para equilibrar los equipos.";
   await loadAll();
 }
 function renderIndividualEventsAdmin(){
@@ -609,6 +644,16 @@ function renderIndividualEventsAdmin(){
   $$("[data-delete-individual]").forEach(b=>b.onclick=async()=>{if(confirm("¿Eliminar esta pelea individual?")){await supabase.from("tournaments").delete().eq("id",b.dataset.deleteIndividual);await loadAll()}});
 }
 if($("#individualEventFormat"))$("#individualEventFormat").onchange=syncIndividualEventFields;
+if($("#balanceIndividual2v2"))$("#balanceIndividual2v2").onclick=()=>balanceIndividual2v2(true);
+["#individualA1","#individualA2","#individualB1","#individualB2"].forEach(id=>{
+  if(!$(id))return;
+  $(id).oninput=()=>{
+    if(["#individualA1","#individualA2","#individualB1","#individualB2"].some(x=>!$(x).value.trim()))individual2v2AutoBalanced=false;
+  };
+  $(id).onchange=()=>{
+    if($("#individualEventFormat")?.value==="2v2"&&!individual2v2AutoBalanced)balanceIndividual2v2(false);
+  };
+});
 if($("#createIndividualEvent"))$("#createIndividualEvent").onclick=createIndividualEvent;
 syncIndividualEventFields();
 

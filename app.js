@@ -809,10 +809,14 @@ function renderCreditsAdmin(){
   renderCashierTabs();
 
   const rows=state.accounts.map(a=>{
-    const selfBlocked=!state.admin&&me?.id===a.id;
-    return `<tr><td>${esc(a.username)}${selfBlocked?' (tú)':''}</td><td>${money(a.credits)}</td><td><input type="number" min="1" value="100" data-credit-input="${a.id}" ${selfBlocked?'disabled':''}></td><td><button data-add-credit="${a.id}" ${selfBlocked?'disabled':''}>Recargar</button> <button class="danger" data-remove-credit="${a.id}" ${selfBlocked?'disabled':''}>Retirar</button></td></tr>`;
+    const isSelf=me?.id===a.id;
+    const selfBlocked=!state.admin&&isSelf;
+    const justificationField=state.admin&&isSelf
+      ? `<div style="margin-top:8px"><label>Justificante obligatorio para recargarte a ti mismo</label><textarea data-self-recharge-justification="${a.id}" rows="2" placeholder="Explica el motivo de esta recarga"></textarea></div>`
+      : '';
+    return `<tr><td>${esc(a.username)}${isSelf?' (tú)':''}</td><td>${money(a.credits)}</td><td><input type="number" min="1" value="100" data-credit-input="${a.id}" ${selfBlocked?'disabled':''}>${justificationField}</td><td><button data-add-credit="${a.id}" ${selfBlocked?'disabled':''}>Recargar</button> <button class="danger" data-remove-credit="${a.id}" ${selfBlocked?'disabled':''}>Retirar</button></td></tr>`;
   }).join('');
-  $('#creditAdminList').innerHTML=`<table><thead><tr><th>Cuenta</th><th>Saldo</th><th>Monto</th><th>Acción</th></tr></thead><tbody>${rows||'<tr><td colspan="4">Sin cuentas.</td></tr>'}</tbody></table>`;
+  $('#creditAdminList').innerHTML=`<table><thead><tr><th>Cuenta</th><th>Saldo</th><th>Monto / justificante</th><th>Acción</th></tr></thead><tbody>${rows||'<tr><td colspan="4">Sin cuentas.</td></tr>'}</tbody></table>`;
   $$('[data-add-credit]').forEach(b=>b.onclick=()=>changeCredits(b.dataset.addCredit,1));
   $$('[data-remove-credit]').forEach(b=>b.onclick=()=>changeCredits(b.dataset.removeCredit,-1));
 
@@ -874,15 +878,15 @@ async function changeCredits(id,sign){
   if(!state.admin&&state.account?.id===id)return alert('Un cajero no puede recargarse ni retirarse créditos a sí mismo.');
   const operation=sign>0?'recharge':'withdrawal';
   if(state.admin){
+    let justification=null;
+    if(sign>0&&state.account?.id===id){
+      justification=document.querySelector(`[data-self-recharge-justification="${id}"]`)?.value.trim()||'';
+      if(!justification)return alert('Debes escribir un justificante antes de recargarte créditos a ti mismo.');
+    }
     const next=target.credits+sign*amount;
     if(next<0)return alert('La cuenta no tiene suficientes créditos.');
     const {error:updateError}=await supabase.from('accounts').update({credits:next}).eq('id',id);
     if(updateError)return alert(updateError.message);
-    let justification=null;
-    if(sign>0&&state.account?.id===id){
-      justification=prompt('Debes escribir un justificante para recargarte créditos a ti mismo:','')?.trim()||'';
-      if(!justification)return alert('La recarga fue cancelada. El justificante es obligatorio.');
-    }
     const {error:logError}=await supabase.from('cashier_transactions').insert({cashier_id:state.account?.id||null,target_account_id:id,operation,credits:amount,operated_by_admin:true,justification});
     if(logError){
       console.error(logError);

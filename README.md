@@ -32,3 +32,8 @@ Esta versión está pensada para una liga privada entre amigos. Usa una publisha
 - Se añadió un constructor de apuestas combinadas con ganador, hándicap y marcador exacto.
 - Las selecciones conservan la cuota del momento en que se agregan; la cuota final se multiplica y queda bloqueada al confirmar.
 - Las combinadas se resuelven automáticamente cuando terminan sus selecciones.
+
+## Rol de cajero
+Antes de subir esta versión, ejecuta una sola vez `ACTUALIZAR_CAJEROS_SUPABASE.sql` en Supabase SQL Editor. No vuelvas a ejecutar `supabase_schema.sql` sobre una base con datos.
+
+El administrador asigna o quita el rol desde **Cuentas**. El cajero ve la pestaña **Caja**, no puede modificar su propio saldo y sus retiros se cubren con el fondo común generado por el 70% de las recargas. La comisión acumulada del cajero es el 30% de los diamantes equivalentes, usando 1 diamante = 30 créditos.

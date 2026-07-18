@@ -11,7 +11,7 @@ const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;',
 const money = n => new Intl.NumberFormat("es-BO").format(Number(n || 0));
 
 let state = {
-  admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[]
+  admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[], cashierTransactions:[]
 };
 let pendingPaidReward = null;
 let wheelRotation = 0;
@@ -60,16 +60,17 @@ async function removeExpiredRewards(){
 
 async function loadAll(){
   await removeExpiredRewards();
-  const [accounts,tournaments,participants,matches,bets,rewards,rankings] = await Promise.all([
+  const [accounts,tournaments,participants,matches,bets,rewards,rankings,cashierTransactions] = await Promise.all([
     supabase.from("accounts").select("*").order("credits",{ascending:false}),
     supabase.from("tournaments").select("*").order("created_at",{ascending:false}),
     supabase.from("tournament_participants").select("*"),
     supabase.from("matches").select("*").order("created_at"),
     supabase.from("bets").select("*").order("created_at",{ascending:false}),
     supabase.from("rewards").select("*").order("created_at",{ascending:false}),
-    supabase.from("rankings").select("*").order("elo",{ascending:false})
+    supabase.from("rankings").select("*").order("elo",{ascending:false}),
+    supabase.from("cashier_transactions").select("*").order("created_at",{ascending:false})
   ]);
-  for(const result of [accounts,tournaments,participants,matches,bets,rewards,rankings]){
+  for(const result of [accounts,tournaments,participants,matches,bets,rewards,rankings,cashierTransactions]){
     if(result.error) console.error(result.error);
   }
   state.accounts=accounts.data||[];
@@ -79,19 +80,19 @@ async function loadAll(){
   state.bets=bets.data||[];
   state.rewards=rewards.data||[];
   state.rankings=rankings.data||[];
+  state.cashierTransactions=cashierTransactions.data||[];
   if(state.account) state.account=state.accounts.find(a=>a.id===state.account.id)||null;
   renderAll();
 }
 function renderAll(){
   document.body.classList.toggle("admin",state.admin);
 
-  // Mantiene las secciones de administrador completamente separadas de las demás pestañas.
-  $$(".admin-only").forEach(el=>{
-    if(el.classList.contains("view")) el.hidden=!state.admin;
-    else el.hidden=!state.admin;
-  });
+  // Accesos separados para administrador y cajero.
+  $$(".admin-only").forEach(el=>el.hidden=!state.admin);
+  const cashierAllowed=!!(state.admin||state.account?.is_cashier);
+  $$(".cashier-access").forEach(el=>el.hidden=!cashierAllowed);
   const activeView=$(".view.active");
-  if(!state.admin && activeView?.classList.contains("admin-only")) switchView("home");
+  if((activeView?.classList.contains("admin-only")&&!state.admin)||(activeView?.classList.contains("cashier-access")&&!cashierAllowed)) switchView("home");
 
   $("#sessionLabel").textContent=state.account?state.account.username:"Sin sesión";
   $("#walletLabel").textContent=state.account?`💰 ${money(state.account.credits)}`:"💰 —";
@@ -102,7 +103,7 @@ function renderAll(){
 }
 function switchView(view){
   const target=$(`#view-${view}`);
-  if(!target || (target.classList.contains("admin-only") && !state.admin)) view="home";
+  if(!target || (target.classList.contains("admin-only")&&!state.admin) || (target.classList.contains("cashier-access")&&!(state.admin||state.account?.is_cashier))) view="home";
 
   $$(".view").forEach(section=>{
     const isActive=section.id===`view-${view}`;
@@ -456,9 +457,10 @@ $("#createAccount").onclick=async()=>{
   if(error){alert(error.message);return} $("#newUsername").value="";$("#newPassword").value="";await loadAll();
 };
 function renderAccountsAdmin(){
-  const rows=state.accounts.map(a=>`<tr><td>${esc(a.username)}</td><td>${money(a.credits)}</td><td><input type="checkbox" data-visible="${a.id}" ${a.visible?"checked":""}></td><td><button class="secondary" data-reset="${a.id}">Nueva clave</button> <button class="danger" data-reset-ranking="${a.id}">Borrar ELO/estadísticas</button> <button class="danger" data-delete-account="${a.id}">Eliminar</button></td></tr>`).join("");
-  $("#accountAdminList").innerHTML=`<table><thead><tr><th>Cuenta</th><th>Saldo</th><th>Visible</th><th>Acciones</th></tr></thead><tbody>${rows||'<tr><td colspan="4">Sin cuentas.</td></tr>'}</tbody></table>`;
+  const rows=state.accounts.map(a=>`<tr><td>${esc(a.username)}</td><td>${money(a.credits)}</td><td><input type="checkbox" data-visible="${a.id}" ${a.visible?"checked":""}></td><td><input type="checkbox" data-cashier-role="${a.id}" ${a.is_cashier?"checked":""}></td><td><button class="secondary" data-reset="${a.id}">Nueva clave</button> <button class="danger" data-reset-ranking="${a.id}">Borrar ELO/estadísticas</button> <button class="danger" data-delete-account="${a.id}">Eliminar</button></td></tr>`).join("");
+  $("#accountAdminList").innerHTML=`<table><thead><tr><th>Cuenta</th><th>Saldo</th><th>Visible</th><th>Cajero</th><th>Acciones</th></tr></thead><tbody>${rows||'<tr><td colspan="4">Sin cuentas.</td></tr>'}</tbody></table>`;
   $$('[data-visible]').forEach(x=>x.onchange=async()=>{await supabase.from('accounts').update({visible:x.checked}).eq('id',x.dataset.visible);loadAll()});
+  $$('[data-cashier-role]').forEach(x=>x.onchange=async()=>{await supabase.from('accounts').update({is_cashier:x.checked}).eq('id',x.dataset.cashierRole);loadAll()});
   $$('[data-reset]').forEach(x=>x.onclick=async()=>{const p=randomPassword();await supabase.from('accounts').update({password_hash:await sha256(p)}).eq('id',x.dataset.reset);alert('Nueva contraseña: '+p)});
   $$('[data-reset-ranking]').forEach(x=>x.onclick=async()=>{
     const account=state.accounts.find(a=>a.id===x.dataset.resetRanking);if(!account)return;
@@ -478,16 +480,58 @@ function renderAccountsAdmin(){
     await loadAll();
   };
 }
+function cashierTotals(){
+  const tx=state.cashierTransactions.filter(t=>!t.operated_by_admin);
+  const totalRecharge=tx.filter(t=>t.operation==='recharge').reduce((a,t)=>a+Number(t.credits),0);
+  const totalWithdraw=tx.filter(t=>t.operation==='withdrawal').reduce((a,t)=>a+Number(t.credits),0);
+  return {totalRecharge,totalWithdraw,commonCredits:Math.max(0,totalRecharge*.70-totalWithdraw)};
+}
 function renderCreditsAdmin(){
-  const rows=state.accounts.map(a=>`<tr><td>${esc(a.username)}</td><td>${money(a.credits)}</td><td><input type="number" min="1" value="100" data-credit-input="${a.id}"></td><td><button data-add-credit="${a.id}">Sumar</button> <button class="danger" data-remove-credit="${a.id}">Retirar</button></td></tr>`).join("");
-  $("#creditAdminList").innerHTML=`<table><thead><tr><th>Cuenta</th><th>Saldo</th><th>Monto</th><th>Acción</th></tr></thead><tbody>${rows||'<tr><td colspan="4">Sin cuentas.</td></tr>'}</tbody></table>`;
-  $$("[data-add-credit]").forEach(b=>b.onclick=()=>changeCredits(b.dataset.addCredit,1));
-  $$("[data-remove-credit]").forEach(b=>b.onclick=()=>changeCredits(b.dataset.removeCredit,-1));
+  const allowed=state.admin||state.account?.is_cashier;
+  if(!allowed)return;
+  const me=state.account;
+  const rows=state.accounts.map(a=>{
+    const selfBlocked=!state.admin&&me?.id===a.id;
+    return `<tr><td>${esc(a.username)}${selfBlocked?' (tú)':''}</td><td>${money(a.credits)}</td><td><input type="number" min="1" value="100" data-credit-input="${a.id}" ${selfBlocked?'disabled':''}></td><td><button data-add-credit="${a.id}" ${selfBlocked?'disabled':''}>Recargar</button> <button class="danger" data-remove-credit="${a.id}" ${selfBlocked?'disabled':''}>Retirar</button></td></tr>`;
+  }).join('');
+  $('#creditAdminList').innerHTML=`<table><thead><tr><th>Cuenta</th><th>Saldo</th><th>Monto</th><th>Acción</th></tr></thead><tbody>${rows||'<tr><td colspan="4">Sin cuentas.</td></tr>'}</tbody></table>`;
+  $$('[data-add-credit]').forEach(b=>b.onclick=()=>changeCredits(b.dataset.addCredit,1));
+  $$('[data-remove-credit]').forEach(b=>b.onclick=()=>changeCredits(b.dataset.removeCredit,-1));
+
+  const totals=cashierTotals();
+  const mine=state.cashierTransactions.filter(t=>!t.operated_by_admin&&t.cashier_id===me?.id&&t.operation==='recharge').reduce((a,t)=>a+Number(t.credits),0);
+  $('#cashierSummary').innerHTML=`
+    <div class="card"><strong>Fondo común disponible</strong><div>${(totals.commonCredits/30).toFixed(2)} diamantes</div><small>${money(totals.commonCredits)} créditos equivalentes</small></div>
+    <div class="card"><strong>Tus recargas acumuladas</strong><div>${money(mine)} créditos</div><small>${(mine/30).toFixed(2)} diamantes cobrados</small></div>
+    <div class="card"><strong>Tu 30%</strong><div>${(mine/30*.30).toFixed(2)} diamantes</div><small>Comisión total acumulada</small></div>`;
+
+  const history=state.cashierTransactions.map(t=>{
+    const cashier=state.accounts.find(a=>a.id===t.cashier_id)?.username||(t.operated_by_admin?'Administrador':'Cuenta eliminada');
+    const target=state.accounts.find(a=>a.id===t.target_account_id)?.username||'Cuenta eliminada';
+    const diamonds=Number(t.credits)/30;
+    const share=t.operation==='recharge'&&!t.operated_by_admin?diamonds*.30:0;
+    return `<tr><td>${new Date(t.created_at).toLocaleString('es-BO')}</td><td>${esc(cashier)}</td><td>${esc(target)}</td><td>${t.operation==='recharge'?'Recarga':'Retiro'}</td><td>${money(t.credits)}</td><td>${diamonds.toFixed(2)}</td><td>${share.toFixed(2)}</td></tr>`;
+  }).join('');
+  $('#cashierHistory').innerHTML=`<table><thead><tr><th>Fecha</th><th>Cajero</th><th>Cuenta</th><th>Movimiento</th><th>Créditos</th><th>Diamantes</th><th>30% cajero</th></tr></thead><tbody>${history||'<tr><td colspan="7">Sin movimientos.</td></tr>'}</tbody></table>`;
 }
 async function changeCredits(id,sign){
-  const a=state.accounts.find(x=>x.id===id),amount=+document.querySelector(`[data-credit-input="${id}"]`).value;
-  if(!a||amount<1)return;
-  await supabase.from("accounts").update({credits:Math.max(0,a.credits+sign*amount)}).eq("id",id);loadAll();
+  const target=state.accounts.find(x=>x.id===id),input=document.querySelector(`[data-credit-input="${id}"]`),amount=Number(input?.value);
+  if(!target||!Number.isInteger(amount)||amount<1)return alert('Ingresa una cantidad válida.');
+  if(!state.admin&&state.account?.id===id)return alert('Un cajero no puede recargarse ni retirarse créditos a sí mismo.');
+  const operation=sign>0?'recharge':'withdrawal';
+  if(state.admin){
+    const next=target.credits+sign*amount;
+    if(next<0)return alert('La cuenta no tiene suficientes créditos.');
+    const {error:updateError}=await supabase.from('accounts').update({credits:next}).eq('id',id);
+    if(updateError)return alert(updateError.message);
+    const {error:logError}=await supabase.from('cashier_transactions').insert({cashier_id:state.account?.id||null,target_account_id:id,operation,credits:amount,operated_by_admin:true});
+    if(logError)console.error(logError);
+  }else{
+    if(!state.account?.is_cashier)return alert('No tienes activo el rol de cajero.');
+    const {error}=await supabase.rpc('cashier_change_credits',{p_cashier_id:state.account.id,p_target_id:id,p_operation:operation,p_credits:amount});
+    if(error)return alert(error.message);
+  }
+  await loadAll();
 }
 
 
@@ -1468,7 +1512,7 @@ function renderRewards(){
 $("#rewardDrawerButton").onclick=()=>$("#rewardDrawer").classList.toggle("open");
 $("#deliveryDrawerButton").onclick=()=>$("#deliveryDrawer").classList.toggle("open");
 
-for(const table of ["accounts","tournaments","tournament_participants","matches","bets","rewards","daily_spins","rankings"]){
+for(const table of ["accounts","tournaments","tournament_participants","matches","bets","rewards","daily_spins","rankings","cashier_transactions"]){
   supabase.channel("rt-"+table).on("postgres_changes",{event:"*",schema:"public",table},async payload=>{
     const tid=payload.new?.tournament_id||payload.old?.tournament_id||$("#adminTournamentSelect")?.value;
     if(["tournaments","tournament_participants","matches"].includes(table)&&tid)await refreshTournamentState(tid);

@@ -7,6 +7,7 @@
 create extension if not exists pgcrypto;
 create extension if not exists citext;
 
+drop table if exists public.cashier_transactions cascade;
 drop table if exists public.daily_spins cascade;
 drop table if exists public.rewards cascade;
 drop table if exists public.bets cascade;
@@ -23,6 +24,18 @@ create table public.accounts (
   password_hash text not null,
   credits integer not null default 1000 check (credits >= 0),
   visible boolean not null default true,
+  is_cashier boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+
+create table public.cashier_transactions (
+  id uuid primary key default gen_random_uuid(),
+  cashier_id uuid references public.accounts(id) on delete set null,
+  target_account_id uuid not null references public.accounts(id) on delete cascade,
+  operation text not null check (operation in ('recharge','withdrawal')),
+  credits integer not null check (credits > 0),
+  operated_by_admin boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -129,8 +142,93 @@ for each row execute function public.touch_updated_at();
 create trigger settings_touch before update on public.app_settings
 for each row execute function public.touch_updated_at();
 
+create or replace function public.cashier_change_credits(
+  p_cashier_id uuid,
+  p_target_id uuid,
+  p_operation text,
+  p_credits integer
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_is_cashier boolean;
+  v_target_credits integer;
+  v_common_pool_credits numeric;
+begin
+  if p_credits is null or p_credits <= 0 then
+    raise exception 'La cantidad debe ser mayor que cero';
+  end if;
+
+  if p_operation not in ('recharge','withdrawal') then
+    raise exception 'Operación no válida';
+  end if;
+
+  select is_cashier into v_is_cashier
+  from public.accounts
+  where id = p_cashier_id;
+
+  if coalesce(v_is_cashier,false) = false then
+    raise exception 'La cuenta no tiene activo el rol de cajero';
+  end if;
+
+  if p_cashier_id = p_target_id then
+    raise exception 'Un cajero no puede modificar sus propios créditos';
+  end if;
+
+  select credits into v_target_credits
+  from public.accounts
+  where id = p_target_id
+  for update;
+
+  if v_target_credits is null then
+    raise exception 'Cuenta de destino inexistente';
+  end if;
+
+  if p_operation = 'recharge' then
+    update public.accounts
+    set credits = credits + p_credits
+    where id = p_target_id;
+  else
+    if v_target_credits < p_credits then
+      raise exception 'La cuenta no tiene suficientes créditos para retirar';
+    end if;
+
+    select coalesce(sum(
+      case
+        when operation = 'recharge' then credits * 0.70
+        when operation = 'withdrawal' then -credits
+      end
+    ),0)
+    into v_common_pool_credits
+    from public.cashier_transactions
+    where operated_by_admin = false;
+
+    if v_common_pool_credits < p_credits then
+      raise exception 'El fondo común de cajeros no alcanza para cubrir este retiro';
+    end if;
+
+    update public.accounts
+    set credits = credits - p_credits
+    where id = p_target_id;
+  end if;
+
+  insert into public.cashier_transactions(
+    cashier_id,target_account_id,operation,credits,operated_by_admin
+  ) values (
+    p_cashier_id,p_target_id,p_operation,p_credits,false
+  );
+end;
+$$;
+
+grant execute on function public.cashier_change_credits(uuid,uuid,text,integer) to anon;
+
+
 -- RLS.
 alter table public.accounts enable row level security;
+alter table public.cashier_transactions enable row level security;
 alter table public.tournaments enable row level security;
 alter table public.tournament_participants enable row level security;
 alter table public.matches enable row level security;
@@ -148,7 +246,7 @@ declare
   t text;
 begin
   foreach t in array array[
-    'accounts','tournaments','tournament_participants','matches',
+    'accounts','cashier_transactions','tournaments','tournament_participants','matches',
     'bets','rewards','daily_spins','rankings','app_settings'
   ]
   loop
@@ -165,7 +263,7 @@ declare
   t text;
 begin
   foreach t in array array[
-    'accounts','tournaments','tournament_participants','matches',
+    'accounts','cashier_transactions','tournaments','tournament_participants','matches',
     'bets','rewards','daily_spins','rankings','app_settings'
   ]
   loop

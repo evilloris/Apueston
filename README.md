@@ -66,3 +66,9 @@ Ejecuta una sola vez `ACTUALIZAR_SOLICITUDES_DINAMICAS_CAJEROS.sql`. Los cajeros
 ## Actualización v37
 Ejecuta una sola vez `ACTUALIZAR_SOLICITUDES_DINAMICAS_CAJEROS_V2.sql` en Supabase.
 Los cajeros ahora indican cuenta, cantidad y descripción; el administrador únicamente aprueba o rechaza la cantidad solicitada. El administrador puede hacer adiciones directas indicando cuenta, cantidad y descripción.
+
+## v39
+- El mercado de hándicap muestra cuatro botones: hándicap positivo y negativo para cada participante.
+- La magnitud del hándicap se calcula según las estadísticas de ambos participantes.
+- Cada una de las cuatro selecciones tiene su propia cuota.
+- No se modificó la lógica de «Quién gana» ni de «Marcador exacto».

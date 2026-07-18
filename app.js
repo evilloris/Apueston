@@ -451,16 +451,24 @@ function handicapMarket(match){
   const strengthA=participantStatStrength(sideA),strengthB=participantStatStrength(sideB);
   const difference=strengthA-strengthB;
   const absoluteDifference=Math.abs(difference);
-  const handicap=absoluteDifference<75?.5:absoluteDifference<150?1.5:absoluteDifference<250?2.5:3.5;
-  const aIsFavorite=difference>=0;
-  const lineA=aIsFavorite?-handicap:handicap;
-  const lineB=-lineA;
+
+  // La magnitud de la línea se define únicamente por la diferencia estadística.
+  const handicap=absoluteDifference<55?.5:absoluteDifference<110?1:absoluteDifference<175?1.5:absoluteDifference<245?2:absoluteDifference<325?2.5:absoluteDifference<420?3.5:4.5;
   const expectedScoreDifference=difference/140;
-  const probabilityA=clamp(1/(1+Math.exp(-(expectedScoreDifference+lineA)/1.55)),.06,.94);
   const payoutFactor=.94;
+  const option=(participantId,line,expectedMargin)=>{
+    const probability=clamp(1/(1+Math.exp(-(expectedMargin+line)/1.55)),.06,.94);
+    return {participant_id:participantId,line,odds:Math.max(1.001,+(payoutFactor/probability).toFixed(3))};
+  };
+
   return {
-    a:{line:lineA,odds:Math.max(1.001,+(payoutFactor/probabilityA).toFixed(3))},
-    b:{line:lineB,odds:Math.max(1.001,+(payoutFactor/(1-probabilityA)).toFixed(3))}
+    handicap,
+    options:[
+      option(match.side_a, handicap, expectedScoreDifference),
+      option(match.side_a,-handicap, expectedScoreDifference),
+      option(match.side_b, handicap,-expectedScoreDifference),
+      option(match.side_b,-handicap,-expectedScoreDifference)
+    ]
   };
 }
 function clamp(value,min,max){return Math.max(min,Math.min(max,value))}
@@ -594,9 +602,17 @@ function renderBetFields(){
     $("#betDynamicFields").innerHTML=`<label>Selección</label><select id="betSelection"><option value="${m.side_a}">${esc(a)}</option><option value="${m.side_b}">${esc(b)}</option></select>`;
   }else if(type==="handicap"){
     const market=handicapMarket(m);
-    const lineA=`${market.a.line>=0?'+':''}${market.a.line}`;
-    const lineB=`${market.b.line>=0?'+':''}${market.b.line}`;
-    $("#betDynamicFields").innerHTML=`<label>Selección</label><select id="betSelection"><option value="${m.side_a}|${market.a.line}">${esc(a)} ${lineA} · x${market.a.odds}</option><option value="${m.side_b}|${market.b.line}">${esc(b)} ${lineB} · x${market.b.odds}</option></select>`;
+    const buttons=market.options.map((option,index)=>{
+      const name=option.participant_id===m.side_a?a:b;
+      const line=`${option.line>=0?'+':''}${option.line}`;
+      return `<button type="button" class="handicap-choice${index===0?' selected':''}" data-handicap-value="${option.participant_id}|${option.line}"><strong>${esc(name)} ${line}</strong><span>x${option.odds}</span></button>`;
+    }).join('');
+    $("#betDynamicFields").innerHTML=`<label>Selecciona un hándicap</label><input id="betSelection" type="hidden" value="${market.options[0].participant_id}|${market.options[0].line}"><div class="handicap-choice-grid">${buttons}</div>`;
+    $$("[data-handicap-value]",$("#betDynamicFields")).forEach(button=>button.onclick=()=>{
+      $("#betSelection").value=button.dataset.handicapValue;
+      $$("[data-handicap-value]",$("#betDynamicFields")).forEach(item=>item.classList.toggle('selected',item===button));
+      updateBetPreview();
+    });
   }else{
     $("#betDynamicFields").innerHTML=`<div class="row"><div><label>${esc(a)}</label><input id="scoreA" type="number" min="0" value="6"></div><div><label>${esc(b)}</label><input id="scoreB" type="number" min="0" value="4"></div></div>`;
   }
@@ -608,8 +624,9 @@ function currentBetOdds(){
   if(type==="winner") return $("#betSelection").value===m.side_a?o.a:o.b;
   if(type==="handicap"){
     const market=handicapMarket(m);
-    const [participantId]=$("#betSelection").value.split('|');
-    return participantId===m.side_a?market.a.odds:market.b.odds;
+    const [participantId,lineText]=$("#betSelection").value.split('|');
+    const line=Number(lineText);
+    return market.options.find(option=>option.participant_id===participantId&&Number(option.line)===line)?.odds||1.001;
   }
   const a=state.participants.find(p=>p.id===m.side_a),b=state.participants.find(p=>p.id===m.side_b);
   return scoreOdds(rankingFor(a.display_name).elo,rankingFor(b.display_name).elo,+$("#scoreA").value,+$("#scoreB").value);

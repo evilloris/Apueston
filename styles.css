@@ -147,6 +147,7 @@ table{min-width:620px}
 .category-special{color:#ffd43b;background:rgba(255,212,59,.12)}
 .category-pseudo{color:#4d8dff;background:rgba(77,141,255,.12)}
 .category-starter{color:#33d17a;background:rgba(51,209,122,.12)}
+.category-fossil{color:#d6a86e;background:rgba(214,168,110,.12)}
 .category-common{color:#adb5bd;background:rgba(173,181,189,.12)}
 .pokemon-reel.spinning .reel-selector strong{filter:blur(.5px)}
 .pokemon-reel.finished{border-color:var(--gold);box-shadow:0 0 0 2px rgba(245,189,22,.14),inset 0 0 28px rgba(0,0,0,.55)}

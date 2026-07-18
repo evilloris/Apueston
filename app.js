@@ -493,18 +493,28 @@ function renderAccountsAdmin(){
   };
 }
 function cashierTotals(){
-  const tx=state.cashierTransactions;
+  const tx=Array.isArray(state.cashierTransactions)?state.cashierTransactions:[];
   const commonFromRecharges=tx
-    .filter(t=>String(t.operation).trim()==='recharge')
+    .filter(t=>String(t.operation||'').trim().toLowerCase()==='recharge')
     .reduce((total,t)=>{
       const credits=Number(t.credits)||0;
       // Cajero normal: 70% al fondo común. Administrador: 60% al fondo común.
-      return total+credits*(t.operated_by_admin?.60:.70);
+      return total+credits*(t.operated_by_admin ? 0.60 : 0.70);
     },0);
   const totalWithdraw=tx
-    .filter(t=>String(t.operation).trim()==='withdrawal')
+    .filter(t=>String(t.operation||'').trim().toLowerCase()==='withdrawal')
     .reduce((total,t)=>total+(Number(t.credits)||0),0);
   return {commonCredits:Math.max(0,commonFromRecharges-totalWithdraw)};
+}
+async function refreshCashierTransactions(){
+  const {data,error}=await supabase.from('cashier_transactions').select('*').order('created_at',{ascending:false});
+  if(error){
+    console.error('No se pudo actualizar el resumen de caja:',error);
+    alert('La operación se realizó, pero no se pudo actualizar el resumen de caja: '+error.message);
+    return false;
+  }
+  state.cashierTransactions=data||[];
+  return true;
 }
 function renderCreditsAdmin(){
   const allowed=state.admin||state.account?.is_cashier;
@@ -519,10 +529,16 @@ function renderCreditsAdmin(){
   $$('[data-remove-credit]').forEach(b=>b.onclick=()=>changeCredits(b.dataset.removeCredit,-1));
 
   const totals=cashierTotals();
-  const mine=state.cashierTransactions
-    .filter(t=>t.cashier_id===me?.id&&String(t.operation).trim()==='recharge')
+  const mine=(Array.isArray(state.cashierTransactions)?state.cashierTransactions:[])
+    .filter(t=>{
+      const isRecharge=String(t.operation||'').trim().toLowerCase()==='recharge';
+      if(!isRecharge)return false;
+      // El administrador inicia sesión sin una cuenta normal, por eso sus movimientos
+      // se identifican mediante operated_by_admin en lugar de cashier_id.
+      return state.admin ? t.operated_by_admin===true : t.cashier_id===me?.id;
+    })
     .reduce((a,t)=>a+(Number(t.credits)||0),0);
-  const personalRate=state.admin?.40:(me?.is_cashier?.30:0);
+  const personalRate=state.admin ? 0.40 : (me?.is_cashier ? 0.30 : 0);
   const personalCommissionCredits=mine*personalRate;
   $('#cashierSummary').innerHTML=`
     <div class="card"><strong>Fondo común disponible</strong><div>${(totals.commonCredits/30).toFixed(2)} diamantes</div><small>${money(totals.commonCredits)} créditos equivalentes</small></div>
@@ -533,7 +549,7 @@ function renderCreditsAdmin(){
     const cashier=state.accounts.find(a=>a.id===t.cashier_id)?.username||(t.operated_by_admin?'Administrador':'Cuenta eliminada');
     const target=state.accounts.find(a=>a.id===t.target_account_id)?.username||'Cuenta eliminada';
     const diamonds=Number(t.credits)/30;
-    const share=t.operation==='recharge'?diamonds*(t.operated_by_admin?.40:.30):0;
+    const share=String(t.operation||'').trim().toLowerCase()==='recharge' ? diamonds*(t.operated_by_admin ? 0.40 : 0.30) : 0;
     return `<tr><td>${new Date(t.created_at).toLocaleString('es-BO')}</td><td>${esc(cashier)}</td><td>${esc(target)}</td><td>${t.operation==='recharge'?'Recarga':'Retiro'}</td><td>${money(t.credits)}</td><td>${diamonds.toFixed(2)}</td><td>${share.toFixed(2)}</td></tr>`;
   }).join('');
   $('#cashierHistory').innerHTML=`<table><thead><tr><th>Fecha</th><th>Cajero</th><th>Cuenta</th><th>Movimiento</th><th>Créditos</th><th>Diamantes</th><th>Comisión personal</th></tr></thead><tbody>${history||'<tr><td colspan="7">Sin movimientos.</td></tr>'}</tbody></table>`;
@@ -549,12 +565,18 @@ async function changeCredits(id,sign){
     const {error:updateError}=await supabase.from('accounts').update({credits:next}).eq('id',id);
     if(updateError)return alert(updateError.message);
     const {error:logError}=await supabase.from('cashier_transactions').insert({cashier_id:state.account?.id||null,target_account_id:id,operation,credits:amount,operated_by_admin:true});
-    if(logError)console.error(logError);
+    if(logError){
+      console.error(logError);
+      return alert('Los créditos cambiaron, pero no se pudo registrar el movimiento: '+logError.message);
+    }
   }else{
     if(!state.account?.is_cashier)return alert('No tienes activo el rol de cajero.');
     const {error}=await supabase.rpc('cashier_change_credits',{p_cashier_id:state.account.id,p_target_id:id,p_operation:operation,p_credits:amount});
     if(error)return alert(error.message);
   }
+  // Fuerza una lectura nueva del historial para que los tres acumulados cambien
+  // inmediatamente, sin depender de Realtime ni de la caché del navegador.
+  await refreshCashierTransactions();
   await loadAll();
 }
 

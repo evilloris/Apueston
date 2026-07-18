@@ -56,3 +56,6 @@ Antes de usarlo, ejecuta una sola vez en Supabase SQL Editor el archivo:
 La migración no elimina cuentas, torneos, apuestas ni datos existentes.
 
 Nota lógica: el nivel 7 conserva las 35 minas solicitadas. Como en un tablero de 36 casillas solo queda una casilla segura, ese nivel se completa al descubrir esa única casilla y aplica x2.00 automáticamente.
+
+## Actualización v33: justificante de recarga propia del administrador
+Ejecuta una sola vez `ACTUALIZAR_JUSTIFICANTE_RECARGA_ADMIN.sql` en Supabase. Cuando el administrador recargue su propia cuenta, deberá escribir un justificante obligatorio, que quedará visible en el historial de caja.

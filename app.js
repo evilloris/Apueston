@@ -843,9 +843,9 @@ function renderCreditsAdmin(){
     const target=state.accounts.find(a=>a.id===t.target_account_id)?.username||'Cuenta eliminada';
     const diamonds=Number(t.credits)/30;
     const share=String(t.operation||'').trim().toLowerCase()==='recharge' ? diamonds*(t.operated_by_admin ? 0.40 : 0.30) : 0;
-    return `<tr><td>${new Date(t.created_at).toLocaleString('es-BO')}</td><td>${esc(cashier)}</td><td>${esc(target)}</td><td>${t.operation==='recharge'?'Recarga':'Retiro'}</td><td>${money(t.credits)}</td><td>${diamonds.toFixed(2)}</td><td>${share.toFixed(2)}</td></tr>`;
+    return `<tr><td>${new Date(t.created_at).toLocaleString('es-BO')}</td><td>${esc(cashier)}</td><td>${esc(target)}</td><td>${t.operation==='recharge'?'Recarga':'Retiro'}</td><td>${money(t.credits)}</td><td>${diamonds.toFixed(2)}</td><td>${share.toFixed(2)}</td><td>${t.justification?esc(t.justification):'—'}</td></tr>`;
   }).join('');
-  $('#cashierHistory').innerHTML=`<table><thead><tr><th>Fecha</th><th>Cajero</th><th>Cuenta</th><th>Movimiento</th><th>Créditos</th><th>Diamantes</th><th>Comisión personal</th></tr></thead><tbody>${history||'<tr><td colspan="7">Sin movimientos.</td></tr>'}</tbody></table>`;
+  $('#cashierHistory').innerHTML=`<table><thead><tr><th>Fecha</th><th>Cajero</th><th>Cuenta</th><th>Movimiento</th><th>Créditos</th><th>Diamantes</th><th>Comisión personal</th><th>Justificante</th></tr></thead><tbody>${history||'<tr><td colspan="8">Sin movimientos.</td></tr>'}</tbody></table>`;
 }
 async function addUntrackedCredits(id){
   const target=state.accounts.find(x=>x.id===id);
@@ -878,7 +878,12 @@ async function changeCredits(id,sign){
     if(next<0)return alert('La cuenta no tiene suficientes créditos.');
     const {error:updateError}=await supabase.from('accounts').update({credits:next}).eq('id',id);
     if(updateError)return alert(updateError.message);
-    const {error:logError}=await supabase.from('cashier_transactions').insert({cashier_id:state.account?.id||null,target_account_id:id,operation,credits:amount,operated_by_admin:true});
+    let justification=null;
+    if(sign>0&&state.account?.id===id){
+      justification=prompt('Debes escribir un justificante para recargarte créditos a ti mismo:','')?.trim()||'';
+      if(!justification)return alert('La recarga fue cancelada. El justificante es obligatorio.');
+    }
+    const {error:logError}=await supabase.from('cashier_transactions').insert({cashier_id:state.account?.id||null,target_account_id:id,operation,credits:amount,operated_by_admin:true,justification});
     if(logError){
       console.error(logError);
       return alert('Los créditos cambiaron, pero no se pudo registrar el movimiento: '+logError.message);

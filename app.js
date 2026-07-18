@@ -141,7 +141,7 @@ function renderNumberGame(){
   $("#numberGameStakeLabel").textContent=session?"Premio acumulado que se arriesgará":"Créditos a apostar";
   const chosen=Math.max(1,Math.min(actualRange,Number(numberInput.value)||1));
   const stake=session?.accumulated||Math.max(0,Number(stakeInput.value)||0),margin=Number(state.numberGameSelectedMargin),mult=ngMultiplier(actualRange,margin);
-  const raw=Math.floor(stake*mult),prize=Math.min(cfg.max_prize,raw),net=prize-stake,prob=ngProbability(actualRange,chosen,margin);
+  const raw=Math.floor(stake*mult),prize=Math.min(cfg.max_prize,raw),net=prize-stake;
   $("#numberGamePreview").innerHTML=`
     <div class="mini-stat">Ronda<strong>${round} / ${cfg.max_rounds}</strong></div>
     <div class="mini-stat">Rango<strong>1–${actualRange}</strong></div>
@@ -149,7 +149,6 @@ function renderNumberGame(){
     <div class="mini-stat">Apuesta<strong>${money(stake)}</strong></div>
     <div class="mini-stat">Premio posible<strong>${money(prize)}${raw>cfg.max_prize?' (limitado)':''}</strong></div>
     <div class="mini-stat">Ganancia neta<strong>${money(net)}</strong></div>
-    <div class="mini-stat">Probabilidad aprox.<strong>${prob.toFixed(2)}%</strong></div>
     <div class="mini-stat">Premio acumulado<strong>${money(session?.accumulated||0)}</strong></div>`;
   const play=$("#numberGamePlay");
   play.textContent=session?`Confirmar continuación · ronda ${round}`:"Jugar";
@@ -171,16 +170,21 @@ function renderNumberGameAdmin(){
   </div><h3>Multiplicadores</h3><div style="overflow-x:auto"><table class="number-game-admin-table"><thead><tr><th>Rango</th><th>±5</th><th>±2</th><th>±1</th><th>Exacto</th></tr></thead><tbody>${[100,1000].map(r=>`<tr><td>1–${r}</td>${[5,2,1,0].map(x=>`<td><input data-nga-mult="${r}-${x}" type="number" step="0.01" value="${Number(m?.[r]?.[x]||0)}"></td>`).join('')}</tr>`).join('')}</tbody></table></div>
   <h3>Opciones permitidas por ronda</h3><div class="grid">${Array.from({length:Number(c.max_rounds)},(_,i)=>i+1).map(r=>`<div class="card"><strong>Ronda ${r}</strong><div class="margin-options">${[5,2,1,0].map(x=>`<label><input type="checkbox" data-nga-round="${r}-${x}" ${(ro?.[r]||[]).map(Number).includes(x)?'checked':''}> ${NG_MARGIN_LABEL[x]}</label>`).join('')}</div></div>`).join('')}</div>
   <button id="ngaSave" style="margin-top:14px">Guardar configuración</button>`;
-  $("#ngaSave").onclick=saveNumberGameAdmin;
+  $("#ngaSave").onclick=()=>saveNumberGameAdmin(false);
+  $("#ngaEnabled").onchange=()=>saveNumberGameAdmin(true);
 }
-async function saveNumberGameAdmin(){
+async function saveNumberGameAdmin(silent=false){
   const rounds=Number($("#ngaRounds").value),multipliers={100:{},1000:{}},round_options={};
   for(const r of [100,1000])for(const m of [5,2,1,0])multipliers[r][m]=Number($(`[data-nga-mult="${r}-${m}"]`).value);
   for(let r=1;r<=rounds;r++)round_options[r]=[5,2,1,0].filter(m=>$(`[data-nga-round="${r}-${m}"]`)?.checked);
   if(Object.values(round_options).some(a=>!a.length))return alert("Cada ronda debe permitir al menos un margen.");
   const config={enabled:$("#ngaEnabled").checked,min_stake:Number($("#ngaMin").value),max_stake:Number($("#ngaMax").value),max_prize:Number($("#ngaPrize").value),max_rounds:rounds,animation_ms:Number($("#ngaAnimation").value),multipliers,round_options};
-  const {error}=await supabase.rpc("number_game_admin_update",{p_admin_code:CONFIG.ADMIN_CODE,p_config:config});
-  if(error)return alert(error.message);await refreshNumberGameData();alert("Configuración guardada.");
+  const {data,error}=await supabase.rpc("number_game_admin_update",{p_admin_code:CONFIG.ADMIN_CODE,p_config:config});
+  if(error){ renderNumberGame(); return alert(error.message); }
+  if(data) state.numberGameSettings=data;
+  renderNumberGame();
+  await refreshNumberGameData();
+  if(!silent) alert("Configuración guardada.");
 }
 async function refreshNumberGameData(){
   const [s,se,r,a]=await Promise.all([supabase.from('number_game_settings').select('*').eq('id',true).maybeSingle(),supabase.from('number_game_sessions').select('*').order('updated_at',{ascending:false}),supabase.from('number_game_rounds').select('*').order('created_at',{ascending:false}).limit(15),state.account?supabase.from('accounts').select('*').eq('id',state.account.id).maybeSingle():Promise.resolve({data:null})]);

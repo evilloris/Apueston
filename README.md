@@ -39,3 +39,8 @@ Esta versión está pensada para una liga privada entre amigos. Usa una publisha
 Para una base de datos que ya está instalada, ejecuta una sola vez `ACTUALIZAR_MINIJUEGO_ADIVINA_NUMERO.sql` en Supabase SQL Editor antes de publicar esta versión. No ejecutes nuevamente `supabase_schema.sql`, porque es el instalador desde cero.
 
 El minijuego usa funciones SQL atómicas para descontar créditos, generar el resultado, continuar, cobrar y evitar solicitudes duplicadas. Las partidas activas se recuperan al recargar la página. El código administrativo configurado en la migración coincide con `CONFIG.ADMIN_CODE` (`pktrn1907`); cambia ambos si modificas el código del organizador.
+
+
+## v28
+- La activación del minijuego se guarda inmediatamente al cambiar la casilla.
+- Se eliminó la probabilidad aproximada de la interfaz para todos los usuarios.

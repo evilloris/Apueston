@@ -493,10 +493,18 @@ function renderAccountsAdmin(){
   };
 }
 function cashierTotals(){
-  const tx=state.cashierTransactions.filter(t=>!t.operated_by_admin);
-  const totalRecharge=tx.filter(t=>t.operation==='recharge').reduce((a,t)=>a+Number(t.credits),0);
-  const totalWithdraw=tx.filter(t=>t.operation==='withdrawal').reduce((a,t)=>a+Number(t.credits),0);
-  return {totalRecharge,totalWithdraw,commonCredits:Math.max(0,totalRecharge*.70-totalWithdraw)};
+  const tx=state.cashierTransactions;
+  const commonFromRecharges=tx
+    .filter(t=>String(t.operation).trim()==='recharge')
+    .reduce((total,t)=>{
+      const credits=Number(t.credits)||0;
+      // Cajero normal: 70% al fondo común. Administrador: 60% al fondo común.
+      return total+credits*(t.operated_by_admin?.60:.70);
+    },0);
+  const totalWithdraw=tx
+    .filter(t=>String(t.operation).trim()==='withdrawal')
+    .reduce((total,t)=>total+(Number(t.credits)||0),0);
+  return {commonCredits:Math.max(0,commonFromRecharges-totalWithdraw)};
 }
 function renderCreditsAdmin(){
   const allowed=state.admin||state.account?.is_cashier;
@@ -511,20 +519,24 @@ function renderCreditsAdmin(){
   $$('[data-remove-credit]').forEach(b=>b.onclick=()=>changeCredits(b.dataset.removeCredit,-1));
 
   const totals=cashierTotals();
-  const mine=state.cashierTransactions.filter(t=>!t.operated_by_admin&&t.cashier_id===me?.id&&t.operation==='recharge').reduce((a,t)=>a+Number(t.credits),0);
+  const mine=state.cashierTransactions
+    .filter(t=>t.cashier_id===me?.id&&String(t.operation).trim()==='recharge')
+    .reduce((a,t)=>a+(Number(t.credits)||0),0);
+  const personalRate=state.admin?.40:(me?.is_cashier?.30:0);
+  const personalCommissionCredits=mine*personalRate;
   $('#cashierSummary').innerHTML=`
     <div class="card"><strong>Fondo común disponible</strong><div>${(totals.commonCredits/30).toFixed(2)} diamantes</div><small>${money(totals.commonCredits)} créditos equivalentes</small></div>
     <div class="card"><strong>Tus recargas acumuladas</strong><div>${money(mine)} créditos</div><small>${(mine/30).toFixed(2)} diamantes cobrados</small></div>
-    <div class="card"><strong>Tu 30%</strong><div>${(mine/30*.30).toFixed(2)} diamantes</div><small>Comisión total acumulada</small></div>`;
+    <div class="card"><strong>Tu ${state.admin?'40':'30'}%</strong><div>${(personalCommissionCredits/30).toFixed(2)} diamantes</div><small>${money(personalCommissionCredits)} créditos equivalentes de comisión</small></div>`;
 
   const history=state.cashierTransactions.map(t=>{
     const cashier=state.accounts.find(a=>a.id===t.cashier_id)?.username||(t.operated_by_admin?'Administrador':'Cuenta eliminada');
     const target=state.accounts.find(a=>a.id===t.target_account_id)?.username||'Cuenta eliminada';
     const diamonds=Number(t.credits)/30;
-    const share=t.operation==='recharge'&&!t.operated_by_admin?diamonds*.30:0;
+    const share=t.operation==='recharge'?diamonds*(t.operated_by_admin?.40:.30):0;
     return `<tr><td>${new Date(t.created_at).toLocaleString('es-BO')}</td><td>${esc(cashier)}</td><td>${esc(target)}</td><td>${t.operation==='recharge'?'Recarga':'Retiro'}</td><td>${money(t.credits)}</td><td>${diamonds.toFixed(2)}</td><td>${share.toFixed(2)}</td></tr>`;
   }).join('');
-  $('#cashierHistory').innerHTML=`<table><thead><tr><th>Fecha</th><th>Cajero</th><th>Cuenta</th><th>Movimiento</th><th>Créditos</th><th>Diamantes</th><th>30% cajero</th></tr></thead><tbody>${history||'<tr><td colspan="7">Sin movimientos.</td></tr>'}</tbody></table>`;
+  $('#cashierHistory').innerHTML=`<table><thead><tr><th>Fecha</th><th>Cajero</th><th>Cuenta</th><th>Movimiento</th><th>Créditos</th><th>Diamantes</th><th>Comisión personal</th></tr></thead><tbody>${history||'<tr><td colspan="7">Sin movimientos.</td></tr>'}</tbody></table>`;
 }
 async function changeCredits(id,sign){
   const target=state.accounts.find(x=>x.id===id),input=document.querySelector(`[data-credit-input="${id}"]`),amount=Number(input?.value);

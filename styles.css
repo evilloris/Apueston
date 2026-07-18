@@ -220,3 +220,22 @@ tr.bet-status-lost td{background:rgba(255,92,104,.035)}
 /* Filtro de entregas por cuenta */
 .delivery-filter-label{display:block;margin:4px 0 6px;font-size:.9rem;font-weight:700}
 #deliveryAccountFilter{width:100%;margin-bottom:12px}
+
+/* v27: minijuego Adivina el número */
+.number-game-layout{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(260px,.75fr);gap:16px;margin-top:16px}
+.margin-options{display:flex;gap:7px;flex-wrap:wrap}
+.margin-choice{border:1px solid var(--line);background:var(--panel2);color:var(--text);padding:9px 12px;border-radius:10px;font-weight:800}
+.margin-choice.active{border-color:var(--gold);box-shadow:0 0 0 2px rgba(245,189,22,.12);color:var(--gold)}
+.margin-choice:disabled{opacity:.35;cursor:not-allowed;text-decoration:line-through}
+.number-game-preview{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin-top:14px}
+.number-game-preview .mini-stat{padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.025)}
+.number-game-preview strong{display:block;margin-top:3px;font-size:1.08rem}
+.number-machine{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:300px}
+#numberGameMachine{font-size:clamp(4rem,10vw,7.5rem);font-weight:1000;line-height:1;color:var(--gold);margin:20px 0;text-shadow:0 0 25px rgba(245,189,22,.18)}
+.number-game-result{line-height:1.55;width:100%}.number-game-result.win{color:#38d77a}.number-game-result.lose{color:#ff5c68}
+.decision-box{display:flex;gap:10px;margin-top:12px}.decision-box button{flex:1}
+.number-game-active{border-color:var(--gold)}
+.number-game-admin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.number-game-admin-table input{min-width:82px}
+.danger-text{color:#ff7b84;margin-top:12px}
+@media(max-width:780px){.number-game-layout{grid-template-columns:1fr}.number-machine{min-height:220px}.decision-box{flex-direction:column}}

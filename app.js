@@ -11,7 +11,7 @@ const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;',
 const money = n => new Intl.NumberFormat("es-BO").format(Number(n || 0));
 
 let state = {
-  admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[], cashierTransactions:[]
+  admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[], cashierTransactions:[], numberGameSettings:null, numberGameSessions:[], numberGameRounds:[], numberGameBusy:false, numberGameSelectedMargin:5
 };
 let pendingPaidReward = null;
 let wheelRotation = 0;
@@ -60,7 +60,7 @@ async function removeExpiredRewards(){
 
 async function loadAll(){
   await removeExpiredRewards();
-  const [accounts,tournaments,participants,matches,bets,rewards,rankings,cashierTransactions] = await Promise.all([
+  const [accounts,tournaments,participants,matches,bets,rewards,rankings,cashierTransactions,numberGameSettings,numberGameSessions,numberGameRounds] = await Promise.all([
     supabase.from("accounts").select("*").order("credits",{ascending:false}),
     supabase.from("tournaments").select("*").order("created_at",{ascending:false}),
     supabase.from("tournament_participants").select("*"),
@@ -68,9 +68,12 @@ async function loadAll(){
     supabase.from("bets").select("*").order("created_at",{ascending:false}),
     supabase.from("rewards").select("*").order("created_at",{ascending:false}),
     supabase.from("rankings").select("*").order("elo",{ascending:false}),
-    supabase.from("cashier_transactions").select("*").order("created_at",{ascending:false})
+    supabase.from("cashier_transactions").select("*").order("created_at",{ascending:false}),
+    supabase.from("number_game_settings").select("*").eq("id",true).maybeSingle(),
+    supabase.from("number_game_sessions").select("*").order("updated_at",{ascending:false}),
+    supabase.from("number_game_rounds").select("*").order("created_at",{ascending:false}).limit(15)
   ]);
-  for(const result of [accounts,tournaments,participants,matches,bets,rewards,rankings,cashierTransactions]){
+  for(const result of [accounts,tournaments,participants,matches,bets,rewards,rankings,cashierTransactions,numberGameSettings,numberGameSessions,numberGameRounds]){
     if(result.error) console.error(result.error);
   }
   state.accounts=accounts.data||[];
@@ -81,6 +84,9 @@ async function loadAll(){
   state.rewards=rewards.data||[];
   state.rankings=rankings.data||[];
   state.cashierTransactions=cashierTransactions.data||[];
+  state.numberGameSettings=numberGameSettings.data||null;
+  state.numberGameSessions=numberGameSessions.data||[];
+  state.numberGameRounds=numberGameRounds.data||[];
   if(state.account) state.account=state.accounts.find(a=>a.id===state.account.id)||null;
   renderAll();
 }
@@ -99,7 +105,126 @@ function renderAll(){
   $("#loginButton").hidden=!!state.account; $("#logoutButton").hidden=!state.account;
   renderLeaderboard(); renderActiveEvents(); renderTournamentSelects(); renderBetMatches(); renderBetTournamentStandings(); renderBetStandings();
   renderMyBets(); renderGeneralStats(); renderResults(); renderAccountsAdmin();
-  renderCreditsAdmin(); renderTournamentsAdmin(); renderIndividualEventsAdmin(); renderRewards(); renderWeeklyDailyPrizes(); updateDailyButton();
+  renderCreditsAdmin(); renderTournamentsAdmin(); renderIndividualEventsAdmin(); renderRewards(); // ============================================================
+// v27 · Minijuego Adivina el número
+// ============================================================
+const NG_MARGIN_LABEL={5:"±5",2:"±2",1:"±1",0:"Exacto"};
+function ngSettings(){
+  return state.numberGameSettings||{enabled:false,min_stake:50,max_stake:1000,max_prize:25000,max_rounds:3,animation_ms:3000,multipliers:{100:{5:1.2,2:1.35,1:1.55,0:1.9},1000:{5:1.5,2:2,1:3,0:5}},round_options:{1:[5,2,1,0],2:[2,1,0],3:[0]}};
+}
+function ngActiveSession(){return state.account?state.numberGameSessions.find(x=>x.account_id===state.account.id&&x.status==="active"):null}
+function ngAllowed(round){return (ngSettings().round_options?.[String(round)]||[]).map(Number)}
+function ngMultiplier(range,margin){return Number(ngSettings().multipliers?.[String(range)]?.[String(margin)]||0)}
+function ngProbability(range,number,margin){const low=Math.max(1,number-margin),high=Math.min(range,number+margin);return ((high-low+1)/range)*100}
+function ngCurrentRound(){return ngActiveSession()?ngActiveSession().current_round+1:1}
+function ngUuid(){return crypto.randomUUID()}
+function renderNumberGame(){
+  const root=$("#view-minigames");if(!root)return;
+  const cfg=ngSettings(),session=ngActiveSession(),round=ngCurrentRound(),logged=!!state.account;
+  $("#numberGameBalance").textContent=logged?`💰 ${money(state.account.credits)} créditos`:"💰 Inicia sesión";
+  $("#numberGameDisabled").hidden=cfg.enabled;
+  const notice=$("#numberGameActiveNotice");
+  notice.hidden=!session;
+  if(session)notice.innerHTML=`<strong>Partida activa recuperada</strong><div>Ronda superada: ${session.current_round} · Premio acumulado: ${money(session.accumulated)} créditos. Puedes cobrarlo o arriesgarlo en la ronda ${round}.</div>`;
+  const range=Number($("#numberGameRange")?.value||session?.range_max||100);
+  if(session){$("#numberGameRange").value=String(session.range_max);$("#numberGameRange").disabled=true}else $("#numberGameRange").disabled=false;
+  const actualRange=session?.range_max||range;
+  const numberInput=$("#numberGameChoice");numberInput.max=String(actualRange);numberInput.min="1";
+  if(Number(numberInput.value)>actualRange)numberInput.value=Math.ceil(actualRange/2);
+  const allowed=ngAllowed(round);
+  if(!allowed.includes(Number(state.numberGameSelectedMargin)))state.numberGameSelectedMargin=allowed[0]??0;
+  $("#numberGameMargins").innerHTML=[5,2,1,0].map(m=>`<button type="button" class="margin-choice ${Number(state.numberGameSelectedMargin)===m?'active':''}" data-ng-margin="${m}" ${allowed.includes(m)?'':'disabled'}>${NG_MARGIN_LABEL[m]}</button>`).join("");
+  $$('[data-ng-margin]').forEach(b=>b.onclick=()=>{state.numberGameSelectedMargin=Number(b.dataset.ngMargin);renderNumberGame()});
+  const stakeInput=$("#numberGameStake");
+  stakeInput.disabled=!!session;stakeInput.min=cfg.min_stake;stakeInput.max=cfg.max_stake;
+  if(session)stakeInput.value=session.accumulated;
+  $("#numberGameStakeLabel").textContent=session?"Premio acumulado que se arriesgará":"Créditos a apostar";
+  const chosen=Math.max(1,Math.min(actualRange,Number(numberInput.value)||1));
+  const stake=session?.accumulated||Math.max(0,Number(stakeInput.value)||0),margin=Number(state.numberGameSelectedMargin),mult=ngMultiplier(actualRange,margin);
+  const raw=Math.floor(stake*mult),prize=Math.min(cfg.max_prize,raw),net=prize-stake,prob=ngProbability(actualRange,chosen,margin);
+  $("#numberGamePreview").innerHTML=`
+    <div class="mini-stat">Ronda<strong>${round} / ${cfg.max_rounds}</strong></div>
+    <div class="mini-stat">Rango<strong>1–${actualRange}</strong></div>
+    <div class="mini-stat">Multiplicador<strong>x${mult.toFixed(2)}</strong></div>
+    <div class="mini-stat">Apuesta<strong>${money(stake)}</strong></div>
+    <div class="mini-stat">Premio posible<strong>${money(prize)}${raw>cfg.max_prize?' (limitado)':''}</strong></div>
+    <div class="mini-stat">Ganancia neta<strong>${money(net)}</strong></div>
+    <div class="mini-stat">Probabilidad aprox.<strong>${prob.toFixed(2)}%</strong></div>
+    <div class="mini-stat">Premio acumulado<strong>${money(session?.accumulated||0)}</strong></div>`;
+  const play=$("#numberGamePlay");
+  play.textContent=session?`Confirmar continuación · ronda ${round}`:"Jugar";
+  play.disabled=state.numberGameBusy||!logged||!cfg.enabled||round>cfg.max_rounds;
+  $("#numberGameDecision").hidden=!session;
+  renderNumberGameHistory();renderNumberGameAdmin();
+}
+function renderNumberGameHistory(){
+  const rows=(state.numberGameRounds||[]).slice(0,15).map(r=>`<tr><td>${esc(r.player_name)}</td><td>1–${r.range_max}</td><td>${r.chosen_number}</td><td>${NG_MARGIN_LABEL[r.margin]}</td><td>${r.result_number}</td><td>${money(r.stake)}</td><td><span class="bet-status ${r.won?'bet-status-won':'bet-status-lost'}">${r.won?'Ganó':'Perdió'}</span></td><td>${money(r.prize_collected)}</td><td>${r.round_no}</td><td>${new Date(r.created_at).toLocaleString('es-BO')}</td></tr>`).join("");
+  $("#numberGameHistory").innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Jugador</th><th>Rango</th><th>Elegido</th><th>Margen</th><th>Obtenido</th><th>Arriesgado</th><th>Resultado</th><th>Cobrado</th><th>Ronda</th><th>Fecha</th></tr></thead><tbody>${rows||'<tr><td colspan="10">Sin resultados.</td></tr>'}</tbody></table></div>`;
+}
+function renderNumberGameAdmin(){
+  const box=$("#numberGameAdmin");if(!box||!state.admin)return;
+  const c=ngSettings(),m=c.multipliers||{},ro=c.round_options||{};
+  box.innerHTML=`<div class="number-game-admin-grid">
+    <label class="card"><input id="ngaEnabled" type="checkbox" ${c.enabled?'checked':''}> Minijuego activo</label>
+    <div><label>Apuesta mínima</label><input id="ngaMin" type="number" value="${c.min_stake}"></div><div><label>Apuesta máxima</label><input id="ngaMax" type="number" value="${c.max_stake}"></div>
+    <div><label>Premio máximo</label><input id="ngaPrize" type="number" value="${c.max_prize}"></div><div><label>Máximo de rondas</label><input id="ngaRounds" type="number" min="1" max="10" value="${c.max_rounds}"></div><div><label>Animación (ms)</label><input id="ngaAnimation" type="number" value="${c.animation_ms}"></div>
+  </div><h3>Multiplicadores</h3><div style="overflow-x:auto"><table class="number-game-admin-table"><thead><tr><th>Rango</th><th>±5</th><th>±2</th><th>±1</th><th>Exacto</th></tr></thead><tbody>${[100,1000].map(r=>`<tr><td>1–${r}</td>${[5,2,1,0].map(x=>`<td><input data-nga-mult="${r}-${x}" type="number" step="0.01" value="${Number(m?.[r]?.[x]||0)}"></td>`).join('')}</tr>`).join('')}</tbody></table></div>
+  <h3>Opciones permitidas por ronda</h3><div class="grid">${Array.from({length:Number(c.max_rounds)},(_,i)=>i+1).map(r=>`<div class="card"><strong>Ronda ${r}</strong><div class="margin-options">${[5,2,1,0].map(x=>`<label><input type="checkbox" data-nga-round="${r}-${x}" ${(ro?.[r]||[]).map(Number).includes(x)?'checked':''}> ${NG_MARGIN_LABEL[x]}</label>`).join('')}</div></div>`).join('')}</div>
+  <button id="ngaSave" style="margin-top:14px">Guardar configuración</button>`;
+  $("#ngaSave").onclick=saveNumberGameAdmin;
+}
+async function saveNumberGameAdmin(){
+  const rounds=Number($("#ngaRounds").value),multipliers={100:{},1000:{}},round_options={};
+  for(const r of [100,1000])for(const m of [5,2,1,0])multipliers[r][m]=Number($(`[data-nga-mult="${r}-${m}"]`).value);
+  for(let r=1;r<=rounds;r++)round_options[r]=[5,2,1,0].filter(m=>$(`[data-nga-round="${r}-${m}"]`)?.checked);
+  if(Object.values(round_options).some(a=>!a.length))return alert("Cada ronda debe permitir al menos un margen.");
+  const config={enabled:$("#ngaEnabled").checked,min_stake:Number($("#ngaMin").value),max_stake:Number($("#ngaMax").value),max_prize:Number($("#ngaPrize").value),max_rounds:rounds,animation_ms:Number($("#ngaAnimation").value),multipliers,round_options};
+  const {error}=await supabase.rpc("number_game_admin_update",{p_admin_code:CONFIG.ADMIN_CODE,p_config:config});
+  if(error)return alert(error.message);await refreshNumberGameData();alert("Configuración guardada.");
+}
+async function refreshNumberGameData(){
+  const [s,se,r,a]=await Promise.all([supabase.from('number_game_settings').select('*').eq('id',true).maybeSingle(),supabase.from('number_game_sessions').select('*').order('updated_at',{ascending:false}),supabase.from('number_game_rounds').select('*').order('created_at',{ascending:false}).limit(15),state.account?supabase.from('accounts').select('*').eq('id',state.account.id).maybeSingle():Promise.resolve({data:null})]);
+  state.numberGameSettings=s.data||state.numberGameSettings;state.numberGameSessions=se.data||[];state.numberGameRounds=r.data||[];if(a.data)state.account=a.data;renderAll();
+}
+async function ngAnimate(result,ms){
+  state.numberGameBusy=true;renderNumberGame();const machine=$("#numberGameMachine"),range=result.range;const start=Date.now();
+  await new Promise(resolve=>{const timer=setInterval(()=>{machine.textContent=1+Math.floor(Math.random()*range);if(Date.now()-start>=ms){clearInterval(timer);machine.textContent=result.result;resolve()}},70)});
+  state.numberGameBusy=false;
+}
+function ngShowResult(r){
+  const low=Math.max(1,r.chosen-r.margin),high=Math.min(r.range,r.chosen+r.margin),interval=r.margin===0?String(r.chosen):`${low}–${high}`;
+  const el=$("#numberGameResult");el.className=`number-game-result ${r.won?'win':'lose'}`;
+  el.innerHTML=`<strong>${r.won?'¡Ganaste!':'Perdiste'}</strong><br>Número elegido: ${r.chosen}<br>Intervalo ganador: ${interval}<br>Número obtenido: ${r.result}<br>Multiplicador: x${Number(r.multiplier).toFixed(2)}<br>Premio acumulado: ${money(r.prize)} créditos${r.auto_cashed?'<br><strong>Premio cobrado automáticamente.</strong>':''}`;
+}
+async function playNumberGame(){
+  if(!state.account)return alert("Debes iniciar sesión.");
+  const cfg=ngSettings(),session=ngActiveSession(),range=session?.range_max||Number($("#numberGameRange").value),chosen=Number($("#numberGameChoice").value),margin=Number(state.numberGameSelectedMargin),stake=Number($("#numberGameStake").value);
+  if(chosen<1||chosen>range)return alert("El número elegido está fuera del rango.");
+  if(!session&&(stake<cfg.min_stake||stake>cfg.max_stake))return alert(`La apuesta debe estar entre ${cfg.min_stake} y ${cfg.max_stake} créditos.`);
+  if(session){
+    const mult=ngMultiplier(range,margin),potential=Math.min(cfg.max_prize,Math.floor(session.accumulated*mult));
+    const summary=`Ronda ${session.current_round+1}\nNúmero: ${chosen}\nRango: 1–${range}\nMargen: ${NG_MARGIN_LABEL[margin]}\nPremio arriesgado: ${session.accumulated}\nMultiplicador: x${mult.toFixed(2)}\nPremio si ganas: ${potential}`;
+    if(!confirm(summary))return;
+    if(!confirm("Estás a punto de arriesgar todo tu premio acumulado. Si pierdes, recibirás 0 créditos. ¿Deseas continuar?"))return;
+  }
+  state.numberGameBusy=true;renderNumberGame();
+  const call=session?supabase.rpc('number_game_continue',{p_account_id:state.account.id,p_session_id:session.id,p_number:chosen,p_margin:margin,p_request_id:ngUuid()}):supabase.rpc('number_game_start',{p_account_id:state.account.id,p_range:range,p_number:chosen,p_margin:margin,p_stake:stake,p_request_id:ngUuid()});
+  const {data,error}=await call;if(error){state.numberGameBusy=false;renderNumberGame();return alert(error.message)}
+  await ngAnimate(data,Number(cfg.animation_ms)||3000);ngShowResult(data);await refreshNumberGameData();
+}
+async function cashNumberGame(){
+  const s=ngActiveSession();if(!s)return;
+  if(!confirm(`¿Cobrar ${money(s.accumulated)} créditos y terminar la partida?`))return;
+  state.numberGameBusy=true;renderNumberGame();const {data,error}=await supabase.rpc('number_game_cashout',{p_account_id:state.account.id,p_session_id:s.id});state.numberGameBusy=false;
+  if(error)return alert(error.message);alert(`Cobraste ${money(data.prize)} créditos.`);await refreshNumberGameData();
+}
+$("#numberGamePlay").onclick=playNumberGame;
+$("#numberGameCash").onclick=cashNumberGame;
+$("#numberGamePrepareContinue").onclick=()=>$("#numberGamePlay").scrollIntoView({behavior:'smooth',block:'center'});
+for(const id of ["numberGameRange","numberGameChoice","numberGameStake"])$("#"+id).addEventListener(id==="numberGameRange"?"change":"input",()=>{if(id==="numberGameRange"){$("#numberGameChoice").max=$("#numberGameRange").value}renderNumberGame()});
+
+
+renderWeeklyDailyPrizes(); updateDailyButton(); renderNumberGame();
 }
 function switchView(view){
   const target=$(`#view-${view}`);
@@ -1622,7 +1747,7 @@ function renderRewards(){
 $("#rewardDrawerButton").onclick=()=>$("#rewardDrawer").classList.toggle("open");
 $("#deliveryDrawerButton").onclick=()=>$("#deliveryDrawer").classList.toggle("open");
 
-for(const table of ["accounts","tournaments","tournament_participants","matches","bets","rewards","daily_spins","rankings","cashier_transactions"]){
+for(const table of ["accounts","tournaments","tournament_participants","matches","bets","rewards","daily_spins","rankings","cashier_transactions","number_game_settings","number_game_sessions","number_game_rounds"]){
   supabase.channel("rt-"+table).on("postgres_changes",{event:"*",schema:"public",table},async payload=>{
     const tid=payload.new?.tournament_id||payload.old?.tournament_id||$("#adminTournamentSelect")?.value;
     if(["tournaments","tournament_participants","matches"].includes(table)&&tid)await refreshTournamentState(tid);
@@ -1649,3 +1774,4 @@ function syncTournamentFormatFields(){
 }
 if($("#tournamentFormat"))$("#tournamentFormat").addEventListener("change",syncTournamentFormatFields);
 syncTournamentFormatFields();
+

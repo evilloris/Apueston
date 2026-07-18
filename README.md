@@ -32,3 +32,10 @@ Esta versión está pensada para una liga privada entre amigos. Usa una publisha
 - Se añadió un constructor de apuestas combinadas con ganador, hándicap y marcador exacto.
 - Las selecciones conservan la cuota del momento en que se agregan; la cuota final se multiplica y queda bloqueada al confirmar.
 - Las combinadas se resuelven automáticamente cuando terminan sus selecciones.
+
+
+## Minijuego Adivina el número (v27)
+
+Para una base de datos que ya está instalada, ejecuta una sola vez `ACTUALIZAR_MINIJUEGO_ADIVINA_NUMERO.sql` en Supabase SQL Editor antes de publicar esta versión. No ejecutes nuevamente `supabase_schema.sql`, porque es el instalador desde cero.
+
+El minijuego usa funciones SQL atómicas para descontar créditos, generar el resultado, continuar, cobrar y evitar solicitudes duplicadas. Las partidas activas se recuperan al recargar la página. El código administrativo configurado en la migración coincide con `CONFIG.ADMIN_CODE` (`pktrn1907`); cambia ambos si modificas el código del organizador.

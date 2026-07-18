@@ -119,10 +119,12 @@ on public.cashier_transactions for update to anon using (true) with check (true)
 create policy "public delete cashier_transactions"
 on public.cashier_transactions for delete to anon using (true);
 
+do $$
 begin
   alter publication supabase_realtime add table public.cashier_transactions;
 exception
   when duplicate_object then null;
-end;
+end
+$$;
 
 notify pgrst, 'reload schema';

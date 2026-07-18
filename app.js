@@ -460,7 +460,19 @@ function renderAccountsAdmin(){
   const rows=state.accounts.map(a=>`<tr><td>${esc(a.username)}</td><td>${money(a.credits)}</td><td><input type="checkbox" data-visible="${a.id}" ${a.visible?"checked":""}></td><td><input type="checkbox" data-cashier-role="${a.id}" ${a.is_cashier?"checked":""}></td><td><button class="secondary" data-reset="${a.id}">Nueva clave</button> <button class="danger" data-reset-ranking="${a.id}">Borrar ELO/estadísticas</button> <button class="danger" data-delete-account="${a.id}">Eliminar</button></td></tr>`).join("");
   $("#accountAdminList").innerHTML=`<table><thead><tr><th>Cuenta</th><th>Saldo</th><th>Visible</th><th>Cajero</th><th>Acciones</th></tr></thead><tbody>${rows||'<tr><td colspan="4">Sin cuentas.</td></tr>'}</tbody></table>`;
   $$('[data-visible]').forEach(x=>x.onchange=async()=>{await supabase.from('accounts').update({visible:x.checked}).eq('id',x.dataset.visible);loadAll()});
-  $$('[data-cashier-role]').forEach(x=>x.onchange=async()=>{await supabase.from('accounts').update({is_cashier:x.checked}).eq('id',x.dataset.cashierRole);loadAll()});
+  $$('[data-cashier-role]').forEach(x=>x.onchange=async()=>{
+    const desired=x.checked;
+    x.disabled=true;
+    const {error}=await supabase.from('accounts').update({is_cashier:desired}).eq('id',x.dataset.cashierRole);
+    if(error){
+      x.checked=!desired;
+      alert('No se pudo cambiar el rol de cajero: '+error.message);
+      console.error(error);
+      x.disabled=false;
+      return;
+    }
+    await loadAll();
+  });
   $$('[data-reset]').forEach(x=>x.onclick=async()=>{const p=randomPassword();await supabase.from('accounts').update({password_hash:await sha256(p)}).eq('id',x.dataset.reset);alert('Nueva contraseña: '+p)});
   $$('[data-reset-ranking]').forEach(x=>x.onclick=async()=>{
     const account=state.accounts.find(a=>a.id===x.dataset.resetRanking);if(!account)return;

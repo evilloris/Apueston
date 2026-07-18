@@ -435,6 +435,34 @@ function participantAverageElo(participant){
   const members=Array.isArray(participant?.members)&&participant.members.length?participant.members:[{name:participant?.display_name}];
   return members.reduce((sum,m)=>sum+rankingFor(m.name).elo,0)/Math.max(1,members.length);
 }
+function participantStatStrength(participant){
+  const members=Array.isArray(participant?.members)&&participant.members.length?participant.members:[{name:participant?.display_name}];
+  const values=members.map(member=>{
+    const ranking=rankingFor(member.name);
+    const played=Number(ranking.wins||0)+Number(ranking.losses||0);
+    const winRate=played?Number(ranking.wins||0)/played:.5;
+    const koDiffPerMatch=played?(Number(ranking.kos_for||0)-Number(ranking.kos_against||0))/played:0;
+    return Number(ranking.elo||1000)+(winRate-.5)*80+clamp(koDiffPerMatch,-3,3)*12;
+  });
+  return values.reduce((sum,value)=>sum+value,0)/Math.max(1,values.length);
+}
+function handicapMarket(match){
+  const sideA=state.participants.find(p=>p.id===match.side_a),sideB=state.participants.find(p=>p.id===match.side_b);
+  const strengthA=participantStatStrength(sideA),strengthB=participantStatStrength(sideB);
+  const difference=strengthA-strengthB;
+  const absoluteDifference=Math.abs(difference);
+  const handicap=absoluteDifference<75?.5:absoluteDifference<150?1.5:absoluteDifference<250?2.5:3.5;
+  const aIsFavorite=difference>=0;
+  const lineA=aIsFavorite?-handicap:handicap;
+  const lineB=-lineA;
+  const expectedScoreDifference=difference/140;
+  const probabilityA=clamp(1/(1+Math.exp(-(expectedScoreDifference+lineA)/1.55)),.06,.94);
+  const payoutFactor=.94;
+  return {
+    a:{line:lineA,odds:Math.max(1.001,+(payoutFactor/probabilityA).toFixed(3))},
+    b:{line:lineB,odds:Math.max(1.001,+(payoutFactor/(1-probabilityA)).toFixed(3))}
+  };
+}
 function clamp(value,min,max){return Math.max(min,Math.min(max,value))}
 function scoreProbabilityShift(diff){
   const d=Math.abs(Number(diff)||0);
@@ -565,7 +593,10 @@ function renderBetFields(){
   if(type==="winner"){
     $("#betDynamicFields").innerHTML=`<label>Selección</label><select id="betSelection"><option value="${m.side_a}">${esc(a)}</option><option value="${m.side_b}">${esc(b)}</option></select>`;
   }else if(type==="handicap"){
-    $("#betDynamicFields").innerHTML=`<label>Selección</label><select id="betSelection"><option value="${m.side_a}|-1.5">${esc(a)} -1.5</option><option value="${m.side_b}|+1.5">${esc(b)} +1.5</option></select>`;
+    const market=handicapMarket(m);
+    const lineA=`${market.a.line>=0?'+':''}${market.a.line}`;
+    const lineB=`${market.b.line>=0?'+':''}${market.b.line}`;
+    $("#betDynamicFields").innerHTML=`<label>Selección</label><select id="betSelection"><option value="${m.side_a}|${market.a.line}">${esc(a)} ${lineA} · x${market.a.odds}</option><option value="${m.side_b}|${market.b.line}">${esc(b)} ${lineB} · x${market.b.odds}</option></select>`;
   }else{
     $("#betDynamicFields").innerHTML=`<div class="row"><div><label>${esc(a)}</label><input id="scoreA" type="number" min="0" value="6"></div><div><label>${esc(b)}</label><input id="scoreB" type="number" min="0" value="4"></div></div>`;
   }
@@ -575,7 +606,11 @@ function renderBetFields(){
 function currentBetOdds(){
   const m=state.matches.find(x=>x.id===$("#betMatchId").value),type=$("#betType").value,o=dynamicOdds(m);
   if(type==="winner") return $("#betSelection").value===m.side_a?o.a:o.b;
-  if(type==="handicap") return 1.9;
+  if(type==="handicap"){
+    const market=handicapMarket(m);
+    const [participantId]=$("#betSelection").value.split('|');
+    return participantId===m.side_a?market.a.odds:market.b.odds;
+  }
   const a=state.participants.find(p=>p.id===m.side_a),b=state.participants.find(p=>p.id===m.side_b);
   return scoreOdds(rankingFor(a.display_name).elo,rankingFor(b.display_name).elo,+$("#scoreA").value,+$("#scoreB").value);
 }

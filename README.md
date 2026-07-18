@@ -72,3 +72,11 @@ Los cajeros ahora indican cuenta, cantidad y descripción; el administrador úni
 - La magnitud del hándicap se calcula según las estadísticas de ambos participantes.
 - Cada una de las cuatro selecciones tiene su propia cuota.
 - No se modificó la lógica de «Quién gana» ni de «Marcador exacto».
+
+## v40 · Comunicados y encuestas
+
+Antes de usar esta versión, ejecuta una sola vez en Supabase:
+
+`ACTUALIZAR_COMUNICADOS_Y_ENCUESTAS.sql`
+
+En Inicio, el administrador puede crear comunicados con respuestas opcionales y encuestas con cualquier cantidad de opciones. Los usuarios pueden responder y votar con su cuenta.

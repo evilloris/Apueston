@@ -11,7 +11,7 @@ const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;',
 const money = n => new Intl.NumberFormat("es-BO").format(Number(n || 0));
 
 let state = {
-  admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[], cashierTransactions:[], cashierAdditionRequests:[], numberGameSettings:null, numberGameSessions:[], numberGameRounds:[], numberGameBusy:false, numberGameSelectedMargin:5, numberGameTab:"games", mineGameSettings:null, mineGameSession:null, mineGameBusy:false, mineGameLastResult:null, cashierTab:"cash"
+  admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[], cashierTransactions:[], cashierAdditionRequests:[], announcements:[], announcementReplies:[], polls:[], pollOptions:[], pollVotes:[], numberGameSettings:null, numberGameSessions:[], numberGameRounds:[], numberGameBusy:false, numberGameSelectedMargin:5, numberGameTab:"games", mineGameSettings:null, mineGameSession:null, mineGameBusy:false, mineGameLastResult:null, cashierTab:"cash"
 };
 let pendingPaidReward = null;
 let wheelRotation = 0;
@@ -60,7 +60,7 @@ async function removeExpiredRewards(){
 
 async function loadAll(){
   await removeExpiredRewards();
-  const [accounts,tournaments,participants,matches,bets,rewards,rankings,cashierTransactions,cashierAdditionRequests,numberGameSettings,numberGameSessions,numberGameRounds,mineGameSettings,mineGameSession] = await Promise.all([
+  const [accounts,tournaments,participants,matches,bets,rewards,rankings,cashierTransactions,cashierAdditionRequests,announcements,announcementReplies,polls,pollOptions,pollVotes,numberGameSettings,numberGameSessions,numberGameRounds,mineGameSettings,mineGameSession] = await Promise.all([
     supabase.from("accounts").select("*").order("credits",{ascending:false}),
     supabase.from("tournaments").select("*").order("created_at",{ascending:false}),
     supabase.from("tournament_participants").select("*"),
@@ -70,13 +70,18 @@ async function loadAll(){
     supabase.from("rankings").select("*").order("elo",{ascending:false}),
     supabase.from("cashier_transactions").select("*").order("created_at",{ascending:false}),
     supabase.from("cashier_addition_requests").select("*").order("created_at",{ascending:false}),
+    supabase.from("announcements").select("*").order("created_at",{ascending:false}),
+    supabase.from("announcement_replies").select("*").order("created_at"),
+    supabase.from("polls").select("*").order("created_at",{ascending:false}),
+    supabase.from("poll_options").select("*").order("sort_order"),
+    supabase.from("poll_votes").select("*"),
     supabase.from("number_game_settings").select("*").eq("id",true).maybeSingle(),
     supabase.from("number_game_sessions").select("*").order("updated_at",{ascending:false}),
     supabase.from("number_game_rounds").select("*").order("created_at",{ascending:false}).limit(15),
     supabase.from("mine_game_settings").select("*").eq("id",true).maybeSingle(),
     state.account ? supabase.rpc("mine_game_get_state",{p_account_id:state.account.id}) : Promise.resolve({data:null,error:null})
   ]);
-  for(const result of [accounts,tournaments,participants,matches,bets,rewards,rankings,cashierTransactions,cashierAdditionRequests,numberGameSettings,numberGameSessions,numberGameRounds,mineGameSettings,mineGameSession]){
+  for(const result of [accounts,tournaments,participants,matches,bets,rewards,rankings,cashierTransactions,cashierAdditionRequests,announcements,announcementReplies,polls,pollOptions,pollVotes,numberGameSettings,numberGameSessions,numberGameRounds,mineGameSettings,mineGameSession]){
     if(result.error) console.error(result.error);
   }
   state.accounts=accounts.data||[];
@@ -88,6 +93,11 @@ async function loadAll(){
   state.rankings=rankings.data||[];
   state.cashierTransactions=cashierTransactions.data||[];
   state.cashierAdditionRequests=cashierAdditionRequests.data||[];
+  state.announcements=announcements.data||[];
+  state.announcementReplies=announcementReplies.data||[];
+  state.polls=polls.data||[];
+  state.pollOptions=pollOptions.data||[];
+  state.pollVotes=pollVotes.data||[];
   state.numberGameSettings=numberGameSettings.data||null;
   state.numberGameSessions=numberGameSessions.data||[];
   state.numberGameRounds=numberGameRounds.data||[];
@@ -109,7 +119,7 @@ function renderAll(){
   $("#sessionLabel").textContent=state.account?state.account.username:"Sin sesión";
   $("#walletLabel").textContent=state.account?`💰 ${money(state.account.credits)}`:"💰 —";
   $("#loginButton").hidden=!!state.account; $("#logoutButton").hidden=!state.account;
-  renderLeaderboard(); renderActiveEvents(); renderTournamentSelects(); renderBetMatches(); renderBetTournamentStandings(); renderBetStandings();
+  renderLeaderboard(); renderCommunityFeed(); renderActiveEvents(); renderTournamentSelects(); renderBetMatches(); renderBetTournamentStandings(); renderBetStandings();
   renderMyBets(); renderGeneralStats(); renderResults(); renderAccountsAdmin();
   renderCreditsAdmin(); renderTournamentsAdmin(); renderIndividualEventsAdmin(); renderRewards(); // ============================================================
 // v27 · Minijuego Adivina el número
@@ -378,6 +388,11 @@ $("#nav").addEventListener("click",e=>{const b=e.target.closest("[data-view]");i
 
 function modal(id,open=true){ $(id).classList.toggle("open",open); }
 $$("[data-close-modal]").forEach(b=>b.onclick=()=>b.closest(".modal").classList.remove("open"));
+$("#openAnnouncementCreator").onclick=()=>{if(state.admin)modal("#announcementModal")};
+$("#openPollCreator").onclick=()=>{if(state.admin){resetPollOptionEditor();modal("#pollModal")}};
+$("#addPollOption").onclick=()=>addPollOptionField();
+$("#createAnnouncement").onclick=async()=>{if(!state.admin)return;const title=$("#announcementTitle").value.trim(),body=$("#announcementBody").value.trim();if(!title||!body){alert("Completa el título y el texto.");return}const {error}=await supabase.from("announcements").insert({title,body,allow_replies:$("#announcementReplies").checked,created_by:state.account?.id||null});if(error){alert(error.message);return}$("#announcementTitle").value="";$("#announcementBody").value="";$("#announcementReplies").checked=false;modal("#announcementModal",false);await loadAll()};
+$("#createPoll").onclick=async()=>{if(!state.admin)return;const question=$("#pollQuestion").value.trim(),labels=$$(".poll-option-input").map(x=>x.value.trim()).filter(Boolean);if(!question||labels.length<2){alert("Escribe la pregunta y al menos 2 opciones.");return}const {data:poll,error}=await supabase.from("polls").insert({question,created_by:state.account?.id||null}).select("*").single();if(error){alert(error.message);return}const {error:optionsError}=await supabase.from("poll_options").insert(labels.map((label,i)=>({poll_id:poll.id,label,sort_order:i})));if(optionsError){await supabase.from("polls").delete().eq("id",poll.id);alert(optionsError.message);return}$("#pollQuestion").value="";modal("#pollModal",false);await loadAll()};
 $("#loginButton").onclick=()=>modal("#loginModal");
 $("#logoutButton").onclick=()=>{state.account=null;localStorage.removeItem("liga_account");renderAll()};
 $("#adminButton").onclick=()=>{
@@ -392,6 +407,28 @@ $("#confirmLogin").onclick=async()=>{
   if(error||!data||data.password_hash!==hash){alert("Cuenta o contraseña incorrecta.");return}
   state.account=data;localStorage.setItem("liga_account",data.id);modal("#loginModal",false);await loadAll();
 };
+
+function communityAuthor(accountId){ return state.accounts.find(a=>a.id===accountId)?.username||"Usuario"; }
+function communityDate(value){ return value?new Intl.DateTimeFormat("es-BO",{dateStyle:"medium",timeStyle:"short"}).format(new Date(value)):""; }
+function renderCommunityFeed(){
+  const root=$("#communityFeed");if(!root)return;
+  const items=[...state.announcements.map(x=>({...x,communityType:"announcement"})),...state.polls.map(x=>({...x,communityType:"poll"}))].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  root.innerHTML=items.map(item=>{
+    if(item.communityType==="announcement"){
+      const replies=state.announcementReplies.filter(r=>r.announcement_id===item.id);
+      const replyBox=item.allow_replies?`<div class="community-replies">${replies.map(r=>`<div class="community-reply"><strong>${esc(communityAuthor(r.account_id))}</strong><span>${esc(r.body)}</span><small>${esc(communityDate(r.created_at))}</small></div>`).join("")||'<div class="muted">Todavía no hay respuestas.</div>'}${state.account?`<div class="community-reply-form"><input data-reply-input="${item.id}" maxlength="1000" placeholder="Escribe una respuesta"><button data-send-reply="${item.id}">Responder</button></div>`:'<div class="muted">Inicia sesión para responder.</div>'}</div>`:'<div class="muted">Las respuestas están deshabilitadas.</div>';
+      return `<article class="card community-card"><div class="community-type">📢 Comunicado</div><h3>${esc(item.title)}</h3><div class="community-body">${esc(item.body).replace(/\n/g,"<br>")}</div><div class="muted">${esc(communityDate(item.created_at))}</div>${replyBox}${state.admin?`<button class="danger community-delete" data-delete-announcement="${item.id}">Eliminar</button>`:""}</article>`;
+    }
+    const options=state.pollOptions.filter(o=>o.poll_id===item.id),votes=state.pollVotes.filter(v=>v.poll_id===item.id),total=votes.length,mine=state.account?votes.find(v=>v.account_id===state.account.id):null;
+    return `<article class="card community-card"><div class="community-type">📊 Encuesta</div><h3>${esc(item.question)}</h3><div class="poll-options">${options.map(o=>{const count=votes.filter(v=>v.option_id===o.id).length,pct=total?Math.round(count*100/total):0;return `<button class="poll-option ${mine?.option_id===o.id?'selected':''}" data-vote-option="${o.id}" data-poll-id="${item.id}" ${!state.account?'disabled':''}><span>${esc(o.label)}</span><strong>${pct}%</strong><div class="poll-bar"><i style="width:${pct}%"></i></div><small>${count} voto${count===1?'':'s'}</small></button>`}).join("")}</div><div class="muted">${total} voto${total===1?'':'s'} · ${esc(communityDate(item.created_at))}${!state.account?' · Inicia sesión para votar.':''}</div>${state.admin?`<button class="danger community-delete" data-delete-poll="${item.id}">Eliminar</button>`:""}</article>`;
+  }).join("")||'<div class="muted">Todavía no hay comunicados ni encuestas.</div>';
+  $$('[data-send-reply]').forEach(b=>b.onclick=async()=>{const input=$(`[data-reply-input="${b.dataset.sendReply}"]`),body=input?.value.trim();if(!state.account||!body)return;const {error}=await supabase.from('announcement_replies').insert({announcement_id:b.dataset.sendReply,account_id:state.account.id,body});if(error)alert(error.message);else await loadAll()});
+  $$('[data-vote-option]').forEach(b=>b.onclick=async()=>{if(!state.account)return;const {error}=await supabase.from('poll_votes').upsert({poll_id:b.dataset.pollId,option_id:b.dataset.voteOption,account_id:state.account.id},{onConflict:'poll_id,account_id'});if(error)alert(error.message);else await loadAll()});
+  $$('[data-delete-announcement]').forEach(b=>b.onclick=async()=>{if(state.admin&&confirm('¿Eliminar este comunicado?')){await supabase.from('announcements').delete().eq('id',b.dataset.deleteAnnouncement);await loadAll()}});
+  $$('[data-delete-poll]').forEach(b=>b.onclick=async()=>{if(state.admin&&confirm('¿Eliminar esta encuesta?')){await supabase.from('polls').delete().eq('id',b.dataset.deletePoll);await loadAll()}});
+}
+function resetPollOptionEditor(){const root=$("#pollOptionEditor");if(!root)return;root.innerHTML='';addPollOptionField();addPollOptionField()}
+function addPollOptionField(value=''){const root=$("#pollOptionEditor");if(!root)return;const row=document.createElement('div');row.className='poll-option-editor-row';row.innerHTML=`<input class="poll-option-input" maxlength="160" placeholder="Opción ${root.children.length+1}" value="${esc(value)}"><button type="button" class="danger">×</button>`;row.querySelector('button').onclick=()=>{if(root.children.length<=2){alert('La encuesta debe tener al menos 2 opciones.');return}row.remove()};root.appendChild(row)}
 
 function renderLeaderboard(){
   const rows=(state.accounts||[]).filter(a=>a.visible).map((a,i)=>`<tr><td>${i+1}</td><td>${esc(a.username)}${state.account?.id===a.id?" (tú)":""}</td><td>${money(a.credits)}</td></tr>`).join("");
@@ -2004,7 +2041,7 @@ function renderRewards(){
 $("#rewardDrawerButton").onclick=()=>$("#rewardDrawer").classList.toggle("open");
 $("#deliveryDrawerButton").onclick=()=>$("#deliveryDrawer").classList.toggle("open");
 
-for(const table of ["accounts","tournaments","tournament_participants","matches","bets","rewards","daily_spins","rankings","cashier_transactions","number_game_settings","number_game_sessions","number_game_rounds","mine_game_settings","mine_game_sessions"]){
+for(const table of ["accounts","tournaments","tournament_participants","matches","bets","rewards","daily_spins","rankings","cashier_transactions","number_game_settings","number_game_sessions","number_game_rounds","mine_game_settings","mine_game_sessions","announcements","announcement_replies","polls","poll_options","poll_votes"]){
   supabase.channel("rt-"+table).on("postgres_changes",{event:"*",schema:"public",table},async payload=>{
     const tid=payload.new?.tournament_id||payload.old?.tournament_id||$("#adminTournamentSelect")?.value;
     if(["tournaments","tournament_participants","matches"].includes(table)&&tid)await refreshTournamentState(tid);

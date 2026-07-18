@@ -48,6 +48,17 @@
   </nav>
 
   <section id="view-home" class="view active">
+    <div class="panel admin-only" id="communityAdminActions" hidden>
+      <h2>Comunicados y encuestas</h2>
+      <div class="home-admin-actions">
+        <button id="openAnnouncementCreator">Crear nvo comunicado</button>
+        <button id="openPollCreator">Crear nueva encuesta</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Comunicados y encuestas</h2>
+      <div id="communityFeed"></div>
+    </div>
     <div class="panel">
       <h2>Eventos activos</h2>
       <div id="activeEvents" class="grid"></div>
@@ -359,6 +370,26 @@
     <div style="margin-top:12px"><label>Monto</label><input id="betStake" type="number" min="1" value="50"></div>
     <div id="betOddsPreview" class="card" style="margin-top:12px"></div>
     <div class="row" style="margin-top:14px"><button id="confirmBet">Confirmar apuesta</button><button id="addToParlay" class="secondary">Agregar a combinada</button><button class="secondary" data-close-modal>Cerrar</button></div>
+  </div>
+</div>
+
+<div class="modal" id="announcementModal">
+  <div class="modal-box">
+    <h2>Crear nuevo comunicado</h2>
+    <label>Título</label><input id="announcementTitle" maxlength="120" placeholder="Título del comunicado">
+    <label style="margin-top:12px">Texto</label><textarea id="announcementBody" rows="7" maxlength="5000" placeholder="Escribe el comunicado"></textarea>
+    <label class="inline-check" style="margin-top:12px"><input type="checkbox" id="announcementReplies"> Permitir respuestas</label>
+    <div class="row" style="margin-top:14px"><button id="createAnnouncement">Publicar comunicado</button><button class="secondary" data-close-modal>Cerrar</button></div>
+  </div>
+</div>
+
+<div class="modal" id="pollModal">
+  <div class="modal-box">
+    <h2>Crear nueva encuesta</h2>
+    <label>Pregunta</label><input id="pollQuestion" maxlength="220" placeholder="Pregunta de la encuesta">
+    <div id="pollOptionEditor" style="margin-top:12px"></div>
+    <div class="row" style="margin-top:12px"><button id="addPollOption" class="secondary" type="button">Agregar opción</button></div>
+    <div class="row" style="margin-top:14px"><button id="createPoll" type="button">Publicar encuesta</button><button class="secondary" data-close-modal>Cerrar</button></div>
   </div>
 </div>
 

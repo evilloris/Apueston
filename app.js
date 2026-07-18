@@ -981,15 +981,27 @@ function localDatetimeValue(value){
   const d=new Date(value),pad=n=>String(n).padStart(2,"0");
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+function tournamentAdminMatchOrder(matches){
+  return matches.map((match,index)=>({match,index})).sort((a,b)=>{
+    const statusRank=match=>match.status==="live"?0:["scheduled"].includes(match.status)?1:2;
+    const rankDiff=statusRank(a.match)-statusRank(b.match);
+    if(rankDiff)return rankDiff;
+
+    const aHasDate=!!a.match.scheduled_at,bHasDate=!!b.match.scheduled_at;
+    if(aHasDate!==bHasDate)return aHasDate?-1:1;
+    if(aHasDate&&bHasDate){
+      const dateDiff=new Date(a.match.scheduled_at).getTime()-new Date(b.match.scheduled_at).getTime();
+      if(dateDiff)return dateDiff;
+    }
+
+    const createdDiff=new Date(a.match.created_at||0).getTime()-new Date(b.match.created_at||0).getTime();
+    return createdDiff||a.index-b.index;
+  }).map(x=>x.match);
+}
 function renderMatchAdmin(){
   const tid=$("#adminTournamentSelect").value;if(!tid)return;
-  const ms=tournamentMatches(tid);
-  const phases=["group","repechage","quarterfinal","semifinal","final","third_place"];
-  $("#matchAdminList").innerHTML=phases.map(phase=>{
-    const list=ms.filter(m=>m.phase===phase);if(!list.length)return "";
-    const title={group:"Fase de grupos",repechage:"Repechaje",quarterfinal:"Cuartos de final",semifinal:"Semifinales",final:"Final",third_place:"Tercer puesto"}[phase];
-    return `<div class="phase-title">${title}</div>${list.map(matchCardAdmin).join("")}`;
-  }).join("")||'<div class="muted">Todavía no se generaron peleas.</div>';
+  const ms=tournamentAdminMatchOrder(tournamentMatches(tid));
+  $("#matchAdminList").innerHTML=ms.map(matchCardAdmin).join("")||'<div class="muted">Todavía no se generaron peleas.</div>';
 
   $$("[data-start-match]").forEach(b=>b.onclick=()=>startMatch(b.dataset.startMatch));
   $$("[data-finish-match]").forEach(b=>b.onclick=()=>finishMatch(b.dataset.finishMatch,false));
@@ -1070,8 +1082,12 @@ async function useAutomaticOdds(id){
 
 async function saveSchedule(id){
   const value=document.querySelector(`[data-match-date="${id}"]`).value;
-  const {error}=await supabase.from("matches").update({scheduled_at:value?new Date(value).toISOString():null}).eq("id",id);
-  if(error)alert(error.message);else alert("Fecha y hora guardadas.");
+  const scheduledAt=value?new Date(value).toISOString():null;
+  const {error}=await supabase.from("matches").update({scheduled_at:scheduledAt}).eq("id",id);
+  if(error){alert(error.message);return}
+  const match=state.matches.find(m=>m.id===id);if(match)match.scheduled_at=scheduledAt;
+  renderMatchAdmin();renderBetMatches();
+  alert("Fecha y hora guardadas.");
 }
 async function startMatch(id){
   const m=state.matches.find(x=>x.id===id);if(!m)return;

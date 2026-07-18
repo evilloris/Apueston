@@ -238,15 +238,30 @@
   </section>
 
   <section id="view-credits" class="view cashier-access" hidden>
-    <div class="panel">
-      <h2>Panel de caja</h2>
-      <p class="muted">1 diamante = 30 créditos. El cajero conserva el 30% y aporta el 70% al fondo común; el administrador conserva el 40% y aporta el 60%.</p>
-      <div id="cashierSummary" class="grid"></div>
-      <div id="creditAdminList" style="margin-top:14px"></div>
+    <div id="cashierSubtabs" class="cashier-subtabs">
+      <button type="button" class="active" data-cashier-tab="cash">Recargas y retiros</button>
+      <button type="button" class="secondary" data-cashier-tab="additions">Adición de créditos</button>
     </div>
-    <div class="panel">
-      <h2>Historial de movimientos</h2>
-      <div id="cashierHistory"></div>
+
+    <div id="cashierCashTab">
+      <div class="panel">
+        <h2>Panel de caja</h2>
+        <p class="muted">1 diamante = 30 créditos. El cajero conserva el 30% y aporta el 70% al fondo común; el administrador conserva el 40% y aporta el 60%.</p>
+        <div id="cashierSummary" class="grid"></div>
+        <div id="creditAdminList" style="margin-top:14px"></div>
+      </div>
+      <div class="panel">
+        <h2>Historial de movimientos</h2>
+        <div id="cashierHistory"></div>
+      </div>
+    </div>
+
+    <div id="cashierAdditionsTab" hidden>
+      <div class="panel">
+        <h2>Adición de créditos</h2>
+        <p class="muted">Los créditos añadidos desde esta pestaña no cuentan como recargas, no generan comisión y no modifican el fondo común.</p>
+        <div id="creditAdditionList" style="margin-top:14px"></div>
+      </div>
     </div>
   </section>
 

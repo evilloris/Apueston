@@ -259,3 +259,9 @@ body.admin .minigame-subtabs:not([hidden]){display:flex !important}
 .mine-cell.mine-hit{color:#ff5c68;border-color:#ff5c68;background:rgba(255,92,104,.12)}
 .mine-message{margin-top:14px;text-align:center;line-height:1.5}.mine-message.win{color:#38d77a}.mine-message.lose{color:#ff5c68}
 @media(max-width:780px){.mine-game-layout{grid-template-columns:1fr}.mine-board{max-width:100%;gap:5px}.mine-cell{border-radius:8px}}
+
+/* v32 · Pestañas de Caja */
+.cashier-subtabs{display:flex;gap:8px;margin-bottom:18px}
+.cashier-subtabs button{min-width:190px;background:var(--panel);color:var(--muted);border-color:var(--line)}
+.cashier-subtabs button.active{color:var(--gold);border-color:var(--gold)}
+@media(max-width:700px){.cashier-subtabs{display:grid;grid-template-columns:1fr 1fr}.cashier-subtabs button{min-width:0;width:100%}}

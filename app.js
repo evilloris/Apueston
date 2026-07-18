@@ -11,7 +11,7 @@ const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;',
 const money = n => new Intl.NumberFormat("es-BO").format(Number(n || 0));
 
 let state = {
-  admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[], cashierTransactions:[], numberGameSettings:null, numberGameSessions:[], numberGameRounds:[], numberGameBusy:false, numberGameSelectedMargin:5, numberGameTab:"games", mineGameSettings:null, mineGameSession:null, mineGameBusy:false, mineGameLastResult:null
+  admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[], cashierTransactions:[], numberGameSettings:null, numberGameSessions:[], numberGameRounds:[], numberGameBusy:false, numberGameSelectedMargin:5, numberGameTab:"games", mineGameSettings:null, mineGameSession:null, mineGameBusy:false, mineGameLastResult:null, cashierTab:"cash"
 };
 let pendingPaidReward = null;
 let wheelRotation = 0;
@@ -790,10 +790,24 @@ async function refreshCashierTransactions(){
   state.cashierTransactions=data||[];
   return true;
 }
+function renderCashierTabs(){
+  const cash=$("#cashierCashTab"),additions=$("#cashierAdditionsTab");
+  if(!cash||!additions)return;
+  const showAdditions=state.cashierTab==="additions";
+  cash.hidden=showAdditions;
+  additions.hidden=!showAdditions;
+  $$('[data-cashier-tab]').forEach(button=>{
+    const active=button.dataset.cashierTab===state.cashierTab;
+    button.classList.toggle("active",active);
+    button.classList.toggle("secondary",!active);
+  });
+}
 function renderCreditsAdmin(){
   const allowed=state.admin||state.account?.is_cashier;
   if(!allowed)return;
   const me=state.account;
+  renderCashierTabs();
+
   const rows=state.accounts.map(a=>{
     const selfBlocked=!state.admin&&me?.id===a.id;
     return `<tr><td>${esc(a.username)}${selfBlocked?' (tú)':''}</td><td>${money(a.credits)}</td><td><input type="number" min="1" value="100" data-credit-input="${a.id}" ${selfBlocked?'disabled':''}></td><td><button data-add-credit="${a.id}" ${selfBlocked?'disabled':''}>Recargar</button> <button class="danger" data-remove-credit="${a.id}" ${selfBlocked?'disabled':''}>Retirar</button></td></tr>`;
@@ -802,13 +816,18 @@ function renderCreditsAdmin(){
   $$('[data-add-credit]').forEach(b=>b.onclick=()=>changeCredits(b.dataset.addCredit,1));
   $$('[data-remove-credit]').forEach(b=>b.onclick=()=>changeCredits(b.dataset.removeCredit,-1));
 
+  const additionRows=state.accounts.map(a=>{
+    const selfBlocked=!state.admin&&me?.id===a.id;
+    return `<tr><td>${esc(a.username)}${selfBlocked?' (tú)':''}</td><td>${money(a.credits)}</td><td><input type="number" min="1" value="100" data-addition-input="${a.id}" ${selfBlocked?'disabled':''}></td><td><button data-addition-credit="${a.id}" ${selfBlocked?'disabled':''}>Adicionar</button></td></tr>`;
+  }).join('');
+  $('#creditAdditionList').innerHTML=`<table><thead><tr><th>Cuenta</th><th>Saldo</th><th>Créditos a adicionar</th><th>Acción</th></tr></thead><tbody>${additionRows||'<tr><td colspan="4">Sin cuentas.</td></tr>'}</tbody></table>`;
+  $$('[data-addition-credit]').forEach(b=>b.onclick=()=>addUntrackedCredits(b.dataset.additionCredit));
+
   const totals=cashierTotals();
   const mine=(Array.isArray(state.cashierTransactions)?state.cashierTransactions:[])
     .filter(t=>{
       const isRecharge=String(t.operation||'').trim().toLowerCase()==='recharge';
       if(!isRecharge)return false;
-      // El administrador inicia sesión sin una cuenta normal, por eso sus movimientos
-      // se identifican mediante operated_by_admin en lugar de cashier_id.
       return state.admin ? t.operated_by_admin===true : t.cashier_id===me?.id;
     })
     .reduce((a,t)=>a+(Number(t.credits)||0),0);
@@ -828,6 +847,27 @@ function renderCreditsAdmin(){
   }).join('');
   $('#cashierHistory').innerHTML=`<table><thead><tr><th>Fecha</th><th>Cajero</th><th>Cuenta</th><th>Movimiento</th><th>Créditos</th><th>Diamantes</th><th>Comisión personal</th></tr></thead><tbody>${history||'<tr><td colspan="7">Sin movimientos.</td></tr>'}</tbody></table>`;
 }
+async function addUntrackedCredits(id){
+  const target=state.accounts.find(x=>x.id===id);
+  const input=document.querySelector(`[data-addition-input="${id}"]`);
+  const amount=Number(input?.value);
+  if(!target||!Number.isInteger(amount)||amount<1)return alert('Ingresa una cantidad válida.');
+  if(!state.admin&&state.account?.id===id)return alert('Un cajero no puede adicionarse créditos a sí mismo.');
+  if(state.admin){
+    const {error}=await supabase.from('accounts').update({credits:target.credits+amount}).eq('id',id);
+    if(error)return alert(error.message);
+  }else{
+    if(!state.account?.is_cashier)return alert('No tienes activo el rol de cajero.');
+    const {error}=await supabase.rpc('cashier_add_untracked_credits',{p_cashier_id:state.account.id,p_target_id:id,p_credits:amount});
+    if(error)return alert(error.message);
+  }
+  await loadAll();
+}
+$$('[data-cashier-tab]').forEach(button=>button.addEventListener('click',()=>{
+  state.cashierTab=button.dataset.cashierTab;
+  renderCreditsAdmin();
+}));
+
 async function changeCredits(id,sign){
   const target=state.accounts.find(x=>x.id===id),input=document.querySelector(`[data-credit-input="${id}"]`),amount=Number(input?.value);
   if(!target||!Number.isInteger(amount)||amount<1)return alert('Ingresa una cantidad válida.');

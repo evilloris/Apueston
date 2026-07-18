@@ -59,3 +59,6 @@ Nota lógica: el nivel 7 conserva las 35 minas solicitadas. Como en un tablero d
 
 ## Actualización v33: justificante de recarga propia del administrador
 Ejecuta una sola vez `ACTUALIZAR_JUSTIFICANTE_RECARGA_ADMIN.sql` en Supabase. Cuando el administrador recargue su propia cuenta, deberá escribir un justificante obligatorio, que quedará visible en el historial de caja.
+
+## Actualización v36: solicitudes de dinámicas de cajeros
+Ejecuta una sola vez `ACTUALIZAR_SOLICITUDES_DINAMICAS_CAJEROS.sql`. Los cajeros solo seleccionan la cuenta y describen la dinámica. El administrador decide cuántos créditos entregar y aprueba o rechaza. Las adiciones y retiros directos del administrador en esta pestaña no se registran en el historial de caja.

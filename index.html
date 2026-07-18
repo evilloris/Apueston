@@ -180,12 +180,43 @@
           </div>
         </div>
       </div>
+
+      <div class="panel" id="mineGamePanel">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <div><h2 style="margin:0">💣 Campo Minado</h2><p class="muted" style="margin:5px 0 0">Supera 7 niveles, descubre 3 casillas seguras por nivel y cobra antes de encontrar una mina.</p></div>
+          <div id="mineGameBalance" class="wallet">💰 —</div>
+        </div>
+        <div id="mineGameDisabled" class="card danger-text" hidden>El minijuego está desactivado temporalmente.</div>
+        <div id="mineGameStatus" class="card" style="margin-top:12px"></div>
+        <div class="mine-game-layout">
+          <div class="card">
+            <div id="mineGameStartBox">
+              <label>Créditos a apostar</label>
+              <input id="mineGameStake" type="number" min="50" max="1000" value="50">
+              <button id="mineGameStart" style="width:100%;margin-top:12px">Comenzar partida</button>
+            </div>
+            <div id="mineGameInfo" class="number-game-preview"></div>
+            <div id="mineGameDecision" class="decision-box" hidden>
+              <button id="mineGameCash" class="secondary">Cobrar premio</button>
+              <button id="mineGameContinue">Continuar al siguiente nivel</button>
+            </div>
+          </div>
+          <div class="card">
+            <div id="mineGameBoard" class="mine-board" aria-label="Tablero de Campo Minado"></div>
+            <div id="mineGameMessage" class="mine-message muted">Inicia una partida para generar el tablero.</div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div id="numberGameSettingsTab" hidden>
       <div class="panel admin-only">
         <h2>Administración de Adivina el número</h2>
         <div id="numberGameAdmin"></div>
+      </div>
+      <div class="panel admin-only">
+        <h2>Administración de Campo Minado</h2>
+        <div id="mineGameAdmin"></div>
       </div>
     </div>
   </section>
@@ -316,6 +347,6 @@
   </div>
 </div>
 
-<script type="module" src="./app.js?v=29"></script>
+<script type="module" src="./app.js?v=30"></script>
 </body>
 </html>

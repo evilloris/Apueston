@@ -247,3 +247,15 @@ body.admin .minigame-subtabs:not([hidden]){display:flex !important}
 .minigame-subtabs button{min-width:150px;background:var(--panel);color:var(--muted);border-color:var(--line)}
 .minigame-subtabs button.active{color:var(--gold);border-color:var(--gold)}
 @media(max-width:700px){.minigame-subtabs{display:grid;grid-template-columns:1fr 1fr}.minigame-subtabs button{min-width:0;width:100%}}
+
+
+/* v30 · Campo Minado */
+.mine-game-layout{display:grid;grid-template-columns:minmax(260px,.75fr) minmax(320px,1.25fr);gap:16px;margin-top:16px}
+.mine-board{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;max-width:520px;margin:0 auto}
+.mine-cell{aspect-ratio:1;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:var(--text);font-size:clamp(1rem,3vw,1.5rem);font-weight:1000;padding:0}
+.mine-cell:not(:disabled):hover{border-color:var(--gold);transform:translateY(-1px)}
+.mine-cell.revealed{background:rgba(255,255,255,.06)}
+.mine-cell.safe-hit{color:#38d77a;border-color:#38d77a}
+.mine-cell.mine-hit{color:#ff5c68;border-color:#ff5c68;background:rgba(255,92,104,.12)}
+.mine-message{margin-top:14px;text-align:center;line-height:1.5}.mine-message.win{color:#38d77a}.mine-message.lose{color:#ff5c68}
+@media(max-width:780px){.mine-game-layout{grid-template-columns:1fr}.mine-board{max-width:100%;gap:5px}.mine-cell{border-radius:8px}}

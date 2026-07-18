@@ -44,3 +44,15 @@ El minijuego usa funciones SQL atómicas para descontar créditos, generar el re
 ## v28
 - La activación del minijuego se guarda inmediatamente al cambiar la casilla.
 - Se eliminó la probabilidad aproximada de la interfaz para todos los usuarios.
+
+## v30 · Campo Minado
+
+Se agregó Campo Minado dentro de Minijuegos y su configuración dentro de la subpestaña Configuración para administradores.
+
+Antes de usarlo, ejecuta una sola vez en Supabase SQL Editor el archivo:
+
+`ACTUALIZAR_MINIJUEGO_CAMPO_MINADO.sql`
+
+La migración no elimina cuentas, torneos, apuestas ni datos existentes.
+
+Nota lógica: el nivel 7 conserva las 35 minas solicitadas. Como en un tablero de 36 casillas solo queda una casilla segura, ese nivel se completa al descubrir esa única casilla y aplica x2.00 automáticamente.

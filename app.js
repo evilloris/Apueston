@@ -11,7 +11,7 @@ const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;',
 const money = n => new Intl.NumberFormat("es-BO").format(Number(n || 0));
 
 let state = {
-  admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[], cashierTransactions:[], numberGameSettings:null, numberGameSessions:[], numberGameRounds:[], numberGameBusy:false, numberGameSelectedMargin:5, numberGameTab:"games"
+  admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[], cashierTransactions:[], numberGameSettings:null, numberGameSessions:[], numberGameRounds:[], numberGameBusy:false, numberGameSelectedMargin:5, numberGameTab:"games", mineGameSettings:null, mineGameSession:null, mineGameBusy:false, mineGameLastResult:null
 };
 let pendingPaidReward = null;
 let wheelRotation = 0;
@@ -60,7 +60,7 @@ async function removeExpiredRewards(){
 
 async function loadAll(){
   await removeExpiredRewards();
-  const [accounts,tournaments,participants,matches,bets,rewards,rankings,cashierTransactions,numberGameSettings,numberGameSessions,numberGameRounds] = await Promise.all([
+  const [accounts,tournaments,participants,matches,bets,rewards,rankings,cashierTransactions,numberGameSettings,numberGameSessions,numberGameRounds,mineGameSettings,mineGameSession] = await Promise.all([
     supabase.from("accounts").select("*").order("credits",{ascending:false}),
     supabase.from("tournaments").select("*").order("created_at",{ascending:false}),
     supabase.from("tournament_participants").select("*"),
@@ -71,9 +71,11 @@ async function loadAll(){
     supabase.from("cashier_transactions").select("*").order("created_at",{ascending:false}),
     supabase.from("number_game_settings").select("*").eq("id",true).maybeSingle(),
     supabase.from("number_game_sessions").select("*").order("updated_at",{ascending:false}),
-    supabase.from("number_game_rounds").select("*").order("created_at",{ascending:false}).limit(15)
+    supabase.from("number_game_rounds").select("*").order("created_at",{ascending:false}).limit(15),
+    supabase.from("mine_game_settings").select("*").eq("id",true).maybeSingle(),
+    state.account ? supabase.rpc("mine_game_get_state",{p_account_id:state.account.id}) : Promise.resolve({data:null,error:null})
   ]);
-  for(const result of [accounts,tournaments,participants,matches,bets,rewards,rankings,cashierTransactions,numberGameSettings,numberGameSessions,numberGameRounds]){
+  for(const result of [accounts,tournaments,participants,matches,bets,rewards,rankings,cashierTransactions,numberGameSettings,numberGameSessions,numberGameRounds,mineGameSettings,mineGameSession]){
     if(result.error) console.error(result.error);
   }
   state.accounts=accounts.data||[];
@@ -87,6 +89,8 @@ async function loadAll(){
   state.numberGameSettings=numberGameSettings.data||null;
   state.numberGameSessions=numberGameSessions.data||[];
   state.numberGameRounds=numberGameRounds.data||[];
+  state.mineGameSettings=mineGameSettings.data||null;
+  state.mineGameSession=mineGameSession.data||null;
   if(state.account) state.account=state.accounts.find(a=>a.id===state.account.id)||null;
   renderAll();
 }
@@ -154,7 +158,7 @@ function renderNumberGame(){
   play.textContent=session?`Confirmar continuación · ronda ${round}`:"Jugar";
   play.disabled=state.numberGameBusy||!logged||!cfg.enabled||round>cfg.max_rounds;
   $("#numberGameDecision").hidden=!session;
-  renderNumberGameTabs();renderNumberGameAdmin();
+  renderNumberGameTabs();renderNumberGameAdmin();renderMineGameAdmin();
 }
 function renderNumberGameTabs(){
   const games=$("#numberGameGamesTab"),settings=$("#numberGameSettingsTab");
@@ -241,8 +245,119 @@ $$('[data-minigame-tab]').forEach(button=>button.addEventListener('click',()=>{
 
 for(const id of ["numberGameRange","numberGameChoice","numberGameStake"])$("#"+id).addEventListener(id==="numberGameRange"?"change":"input",()=>{if(id==="numberGameRange"){$("#numberGameChoice").max=$("#numberGameRange").value}renderNumberGame()});
 
+// ============================================================
+// v30 · Minijuego Campo Minado
+// ============================================================
+function mgSettings(){return state.mineGameSettings||{enabled:false,min_stake:50,max_stake:1000,max_prize:25000}}
+function mgSession(){return state.mineGameSession&&state.mineGameSession.status==="active"?state.mineGameSession:null}
+function mgMines(level){return Math.min(35,Math.max(5,Number(level||1)*5))}
+function mgRequired(level){return Math.min(3,36-mgMines(level))}
+async function refreshMineGameData(){
+  const [s,g,a]=await Promise.all([
+    supabase.from('mine_game_settings').select('*').eq('id',true).maybeSingle(),
+    state.account?supabase.rpc('mine_game_get_state',{p_account_id:state.account.id}):Promise.resolve({data:null}),
+    state.account?supabase.from('accounts').select('*').eq('id',state.account.id).maybeSingle():Promise.resolve({data:null})
+  ]);
+  if(s.data)state.mineGameSettings=s.data;
+  state.mineGameSession=g.data||null;
+  if(a.data)state.account=a.data;
+  renderAll();
+}
+function renderMineGame(){
+  const board=$('#mineGameBoard');if(!board)return;
+  const cfg=mgSettings(),s=mgSession(),logged=!!state.account;
+  $('#mineGameBalance').textContent=logged?`💰 ${money(state.account.credits)} créditos`:'💰 Inicia sesión';
+  $('#mineGameDisabled').hidden=cfg.enabled;
+  const stake=$('#mineGameStake');stake.min=cfg.min_stake;stake.max=cfg.max_stake;stake.disabled=!!s||state.mineGameBusy;
+  $('#mineGameStart').disabled=!logged||!cfg.enabled||!!s||state.mineGameBusy;
+  $('#mineGameStartBox').hidden=!!s;
+  const level=Number(s?.level||1),safe=Number(s?.safe_picks||0),required=mgRequired(level),prize=Number(s?.accumulated||0);
+  $('#mineGameInfo').innerHTML=`<div class="mini-stat">Nivel<strong>${level} / 7</strong></div><div class="mini-stat">Minas<strong>${mgMines(level)} / 36</strong></div><div class="mini-stat">Casillas seguras<strong>${safe} / ${required}</strong></div><div class="mini-stat">Premio acumulado<strong>${money(prize)}</strong></div>`;
+  const status=$('#mineGameStatus');
+  status.innerHTML=s?`<strong>Partida activa</strong><div>Nivel ${level}: encuentra ${required-safe} casilla${required-safe===1?'':'s'} segura${required-safe===1?'':'s'} para completarlo.</div>`:`<strong>Campo Minado</strong><div>Apuesta créditos y selecciona casillas. Cada nivel crea un tablero nuevo.</div>`;
+  const hitMine=Number(s?.hit_mine_cell??state.mineGameLastResult?.hit_mine_cell??-1);
+  const revealed=new Set((s?.revealed_cells||[]).map(Number));if(hitMine>=0)revealed.add(hitMine);
+  const safeCells=new Set((s?.safe_cells||[]).map(Number));
+  board.innerHTML=Array.from({length:36},(_,i)=>{
+    const open=revealed.has(i),mine=i===hitMine,good=open&&safeCells.has(i);
+    return `<button type="button" class="mine-cell ${open?'revealed':''} ${mine?'mine-hit':''} ${good?'safe-hit':''}" data-mine-cell="${i}" ${!s||open||state.mineGameBusy?'disabled':''} aria-label="Casilla ${i+1}">${mine?'💣':good?'✓':''}</button>`;
+  }).join('');
+  $$('[data-mine-cell]',board).forEach(b=>b.onclick=()=>revealMineCell(Number(b.dataset.mineCell)));
+  const completed=!!s?.level_complete;
+  $('#mineGameDecision').hidden=!completed;
+  $('#mineGameCash').disabled=state.mineGameBusy;
+  $('#mineGameContinue').disabled=state.mineGameBusy||level>=7;
+  $('#mineGameContinue').textContent=level>=7?'Premio entregado':'Continuar al siguiente nivel';
+  const message=$('#mineGameMessage');
+  if(state.mineGameLastResult){
+    const r=state.mineGameLastResult;
+    message.className=`mine-message ${r.hit_mine?'lose':'win'}`;
+    message.innerHTML=r.hit_mine?`<strong>¡Mina!</strong> Perdiste la apuesta y el premio acumulado.`:`<strong>Casilla segura.</strong> ${r.multiplier>1?`Multiplicador x${Number(r.multiplier).toFixed(2)}. `:''}Premio: ${money(r.prize)} créditos.${r.auto_cashed?' Cobrado automáticamente.':''}`;
+  }else{
+    message.className='mine-message muted';
+    message.textContent=s?'Selecciona una casilla cerrada.':'Inicia una partida para generar el tablero.';
+  }
+}
+async function startMineGame(){
+  if(!state.account)return alert('Debes iniciar sesión.');
+  const cfg=mgSettings(),stake=Number($('#mineGameStake').value);
+  if(stake<cfg.min_stake||stake>cfg.max_stake)return alert(`La apuesta debe estar entre ${cfg.min_stake} y ${cfg.max_stake} créditos.`);
+  if(!confirm(`¿Apostar ${money(stake)} créditos en Campo Minado?`))return;
+  state.mineGameBusy=true;state.mineGameLastResult=null;renderMineGame();
+  const {data,error}=await supabase.rpc('mine_game_start',{p_account_id:state.account.id,p_stake:stake,p_request_id:crypto.randomUUID()});
+  state.mineGameBusy=false;
+  if(error){renderMineGame();return alert(error.message)}
+  state.mineGameSession=data;await refreshMineGameData();
+}
+async function revealMineCell(cell){
+  const s=mgSession();if(!s||state.mineGameBusy)return;
+  state.mineGameBusy=true;renderMineGame();
+  const {data,error}=await supabase.rpc('mine_game_reveal',{p_account_id:state.account.id,p_session_id:s.id,p_cell:cell,p_request_id:crypto.randomUUID()});
+  state.mineGameBusy=false;
+  if(error){renderMineGame();return alert(error.message)}
+  state.mineGameLastResult=data;
+  state.mineGameSession=data.state||null;
+  await refreshMineGameData();
+}
+async function cashMineGame(){
+  const s=mgSession();if(!s)return;
+  if(!confirm(`¿Cobrar ${money(s.accumulated)} créditos y finalizar la partida?`))return;
+  state.mineGameBusy=true;renderMineGame();
+  const {data,error}=await supabase.rpc('mine_game_cashout',{p_account_id:state.account.id,p_session_id:s.id});
+  state.mineGameBusy=false;
+  if(error)return alert(error.message);
+  state.mineGameLastResult={hit_mine:false,multiplier:1,prize:data.prize,auto_cashed:true};
+  alert(`Cobraste ${money(data.prize)} créditos.`);await refreshMineGameData();
+}
+async function continueMineGame(){
+  const s=mgSession();if(!s||!s.level_complete)return;
+  if(!confirm(`¿Arriesgar ${money(s.accumulated)} créditos en el nivel ${Number(s.level)+1}?`))return;
+  state.mineGameBusy=true;state.mineGameLastResult=null;renderMineGame();
+  const {data,error}=await supabase.rpc('mine_game_continue',{p_account_id:state.account.id,p_session_id:s.id});
+  state.mineGameBusy=false;
+  if(error)return alert(error.message);
+  state.mineGameSession=data;await refreshMineGameData();
+}
+function renderMineGameAdmin(){
+  const box=$('#mineGameAdmin');if(!box||!state.admin)return;
+  const c=mgSettings();
+  box.innerHTML=`<div class="number-game-admin-grid"><label class="card"><input id="mgaEnabled" type="checkbox" ${c.enabled?'checked':''}> Minijuego activo</label><div><label>Apuesta mínima</label><input id="mgaMin" type="number" min="1" value="${c.min_stake}"></div><div><label>Apuesta máxima</label><input id="mgaMax" type="number" min="1" value="${c.max_stake}"></div><div><label>Premio máximo</label><input id="mgaPrize" type="number" min="1" value="${c.max_prize}"></div></div><p class="muted">El tablero siempre es de 6×6, tiene 7 niveles y suma 5 minas por nivel. Los niveles 1–6 usan multiplicadores aleatorios por casilla entre x1.05 y x1.10; al completar el nivel 7 se aplica x2.00 y se cobra automáticamente.</p><button id="mgaSave" style="margin-top:12px">Guardar configuración</button>`;
+  $('#mgaSave').onclick=()=>saveMineGameAdmin(false);
+  $('#mgaEnabled').onchange=()=>saveMineGameAdmin(true);
+}
+async function saveMineGameAdmin(silent=false){
+  const config={enabled:$('#mgaEnabled').checked,min_stake:Number($('#mgaMin').value),max_stake:Number($('#mgaMax').value),max_prize:Number($('#mgaPrize').value)};
+  const {data,error}=await supabase.rpc('mine_game_admin_update',{p_admin_code:CONFIG.ADMIN_CODE,p_config:config});
+  if(error){renderMineGame();return alert(error.message)}
+  if(data)state.mineGameSettings=data;
+  renderMineGame();renderMineGameAdmin();
+  if(!silent)alert('Configuración de Campo Minado guardada.');
+}
+$('#mineGameStart').onclick=startMineGame;
+$('#mineGameCash').onclick=cashMineGame;
+$('#mineGameContinue').onclick=continueMineGame;
 
-renderWeeklyDailyPrizes(); updateDailyButton(); renderNumberGame();
+renderWeeklyDailyPrizes(); updateDailyButton(); renderNumberGame(); renderMineGame();
 }
 function switchView(view){
   const target=$(`#view-${view}`);
@@ -1765,7 +1880,7 @@ function renderRewards(){
 $("#rewardDrawerButton").onclick=()=>$("#rewardDrawer").classList.toggle("open");
 $("#deliveryDrawerButton").onclick=()=>$("#deliveryDrawer").classList.toggle("open");
 
-for(const table of ["accounts","tournaments","tournament_participants","matches","bets","rewards","daily_spins","rankings","cashier_transactions","number_game_settings","number_game_sessions","number_game_rounds"]){
+for(const table of ["accounts","tournaments","tournament_participants","matches","bets","rewards","daily_spins","rankings","cashier_transactions","number_game_settings","number_game_sessions","number_game_rounds","mine_game_settings","mine_game_sessions"]){
   supabase.channel("rt-"+table).on("postgres_changes",{event:"*",schema:"public",table},async payload=>{
     const tid=payload.new?.tournament_id||payload.old?.tournament_id||$("#adminTournamentSelect")?.value;
     if(["tournaments","tournament_participants","matches"].includes(table)&&tid)await refreshTournamentState(tid);

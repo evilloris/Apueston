@@ -11,7 +11,7 @@ const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;',
 const money = n => new Intl.NumberFormat("es-BO").format(Number(n || 0));
 
 let state = {
-  admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[], cashierTransactions:[], numberGameSettings:null, numberGameSessions:[], numberGameRounds:[], numberGameBusy:false, numberGameSelectedMargin:5
+  admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[], cashierTransactions:[], numberGameSettings:null, numberGameSessions:[], numberGameRounds:[], numberGameBusy:false, numberGameSelectedMargin:5, numberGameTab:"games"
 };
 let pendingPaidReward = null;
 let wheelRotation = 0;
@@ -154,11 +154,19 @@ function renderNumberGame(){
   play.textContent=session?`Confirmar continuación · ronda ${round}`:"Jugar";
   play.disabled=state.numberGameBusy||!logged||!cfg.enabled||round>cfg.max_rounds;
   $("#numberGameDecision").hidden=!session;
-  renderNumberGameHistory();renderNumberGameAdmin();
+  renderNumberGameTabs();renderNumberGameAdmin();
 }
-function renderNumberGameHistory(){
-  const rows=(state.numberGameRounds||[]).slice(0,15).map(r=>`<tr><td>${esc(r.player_name)}</td><td>1–${r.range_max}</td><td>${r.chosen_number}</td><td>${NG_MARGIN_LABEL[r.margin]}</td><td>${r.result_number}</td><td>${money(r.stake)}</td><td><span class="bet-status ${r.won?'bet-status-won':'bet-status-lost'}">${r.won?'Ganó':'Perdió'}</span></td><td>${money(r.prize_collected)}</td><td>${r.round_no}</td><td>${new Date(r.created_at).toLocaleString('es-BO')}</td></tr>`).join("");
-  $("#numberGameHistory").innerHTML=`<div style="overflow-x:auto"><table><thead><tr><th>Jugador</th><th>Rango</th><th>Elegido</th><th>Margen</th><th>Obtenido</th><th>Arriesgado</th><th>Resultado</th><th>Cobrado</th><th>Ronda</th><th>Fecha</th></tr></thead><tbody>${rows||'<tr><td colspan="10">Sin resultados.</td></tr>'}</tbody></table></div>`;
+function renderNumberGameTabs(){
+  const games=$("#numberGameGamesTab"),settings=$("#numberGameSettingsTab");
+  if(!games||!settings)return;
+  if(!state.admin)state.numberGameTab="games";
+  const showSettings=state.admin&&state.numberGameTab==="settings";
+  games.hidden=showSettings;settings.hidden=!showSettings;
+  $$('[data-minigame-tab]').forEach(button=>{
+    const active=button.dataset.minigameTab===state.numberGameTab;
+    button.classList.toggle("active",active);
+    button.classList.toggle("secondary",!active);
+  });
 }
 function renderNumberGameAdmin(){
   const box=$("#numberGameAdmin");if(!box||!state.admin)return;
@@ -225,6 +233,12 @@ async function cashNumberGame(){
 $("#numberGamePlay").onclick=playNumberGame;
 $("#numberGameCash").onclick=cashNumberGame;
 $("#numberGamePrepareContinue").onclick=()=>$("#numberGamePlay").scrollIntoView({behavior:'smooth',block:'center'});
+$$('[data-minigame-tab]').forEach(button=>button.addEventListener('click',()=>{
+  if(!state.admin)return;
+  state.numberGameTab=button.dataset.minigameTab;
+  renderNumberGame();
+}));
+
 for(const id of ["numberGameRange","numberGameChoice","numberGameStake"])$("#"+id).addEventListener(id==="numberGameRange"?"change":"input",()=>{if(id==="numberGameRange"){$("#numberGameChoice").max=$("#numberGameRange").value}renderNumberGame()});
 
 

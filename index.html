@@ -145,42 +145,48 @@
 
 
   <section id="view-minigames" class="view">
-    <div class="panel">
-      <div class="row" style="justify-content:space-between;align-items:center">
-        <div><h2 style="margin:0">🎯 Adivina el número</h2><p class="muted" style="margin:5px 0 0">Arriesga créditos, cobra tu premio o continúa hasta un máximo de tres rondas.</p></div>
-        <div id="numberGameBalance" class="wallet">💰 —</div>
-      </div>
-      <div id="numberGameDisabled" class="card danger-text" hidden>El minijuego está desactivado temporalmente.</div>
-      <div id="numberGameActiveNotice" class="card" hidden></div>
-      <div class="number-game-layout">
-        <div class="card">
-          <div class="grid">
-            <div><label>Rango</label><select id="numberGameRange"><option value="100">1 al 100</option><option value="1000">1 al 1000</option></select></div>
-            <div><label>Número elegido</label><input id="numberGameChoice" type="number" min="1" max="100" value="50"></div>
-            <div><label>Margen</label><div id="numberGameMargins" class="margin-options"></div></div>
-            <div><label id="numberGameStakeLabel">Créditos a apostar</label><input id="numberGameStake" type="number" min="50" max="1000" value="50"></div>
-          </div>
-          <div id="numberGamePreview" class="number-game-preview"></div>
-          <button id="numberGamePlay" style="width:100%;margin-top:12px">Jugar</button>
-          <div id="numberGameDecision" class="decision-box" hidden>
-            <button id="numberGameCash" class="secondary">Cobrar premio</button>
-            <button id="numberGamePrepareContinue">Continuar</button>
-          </div>
+    <div id="numberGameSubtabs" class="minigame-subtabs admin-only">
+      <button type="button" class="active" data-minigame-tab="games">Juegos</button>
+      <button type="button" class="secondary" data-minigame-tab="settings">Configuración</button>
+    </div>
+
+    <div id="numberGameGamesTab">
+      <div class="panel">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <div><h2 style="margin:0">🎯 Adivina el número</h2><p class="muted" style="margin:5px 0 0">Arriesga créditos, cobra tu premio o continúa hasta un máximo de tres rondas.</p></div>
+          <div id="numberGameBalance" class="wallet">💰 —</div>
         </div>
-        <div class="card number-machine">
-          <div class="muted">Resultado</div>
-          <div id="numberGameMachine">—</div>
-          <div id="numberGameResult" class="number-game-result muted">Configura tu apuesta y pulsa Jugar.</div>
+        <div id="numberGameDisabled" class="card danger-text" hidden>El minijuego está desactivado temporalmente.</div>
+        <div id="numberGameActiveNotice" class="card" hidden></div>
+        <div class="number-game-layout">
+          <div class="card">
+            <div class="grid">
+              <div><label>Rango</label><select id="numberGameRange"><option value="100">1 al 100</option><option value="1000">1 al 1000</option></select></div>
+              <div><label>Número elegido</label><input id="numberGameChoice" type="number" min="1" max="100" value="50"></div>
+              <div><label>Margen</label><div id="numberGameMargins" class="margin-options"></div></div>
+              <div><label id="numberGameStakeLabel">Créditos a apostar</label><input id="numberGameStake" type="number" min="50" max="1000" value="50"></div>
+            </div>
+            <div id="numberGamePreview" class="number-game-preview"></div>
+            <button id="numberGamePlay" style="width:100%;margin-top:12px">Jugar</button>
+            <div id="numberGameDecision" class="decision-box" hidden>
+              <button id="numberGameCash" class="secondary">Cobrar premio</button>
+              <button id="numberGamePrepareContinue">Continuar</button>
+            </div>
+          </div>
+          <div class="card number-machine">
+            <div class="muted">Resultado</div>
+            <div id="numberGameMachine">—</div>
+            <div id="numberGameResult" class="number-game-result muted">Configura tu apuesta y pulsa Jugar.</div>
+          </div>
         </div>
       </div>
     </div>
-    <div class="panel">
-      <h2>Últimos 15 resultados</h2>
-      <div id="numberGameHistory"></div>
-    </div>
-    <div class="panel admin-only">
-      <h2>Administración de Adivina el número</h2>
-      <div id="numberGameAdmin"></div>
+
+    <div id="numberGameSettingsTab" hidden>
+      <div class="panel admin-only">
+        <h2>Administración de Adivina el número</h2>
+        <div id="numberGameAdmin"></div>
+      </div>
     </div>
   </section>
 
@@ -310,6 +316,6 @@
   </div>
 </div>
 
-<script type="module" src="./app.js?v=28"></script>
+<script type="module" src="./app.js?v=29"></script>
 </body>
 </html>

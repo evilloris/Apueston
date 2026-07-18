@@ -239,3 +239,11 @@ tr.bet-status-lost td{background:rgba(255,92,104,.035)}
 .number-game-admin-table input{min-width:82px}
 .danger-text{color:#ff7b84;margin-top:12px}
 @media(max-width:780px){.number-game-layout{grid-template-columns:1fr}.number-machine{min-height:220px}.decision-box{flex-direction:column}}
+
+
+/* v29 · Subpestañas internas de Minijuegos */
+.minigame-subtabs{display:flex;gap:8px;margin-bottom:18px}
+body.admin .minigame-subtabs:not([hidden]){display:flex !important}
+.minigame-subtabs button{min-width:150px;background:var(--panel);color:var(--muted);border-color:var(--line)}
+.minigame-subtabs button.active{color:var(--gold);border-color:var(--gold)}
+@media(max-width:700px){.minigame-subtabs{display:grid;grid-template-columns:1fr 1fr}.minigame-subtabs button{min-width:0;width:100%}}

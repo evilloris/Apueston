@@ -820,24 +820,20 @@ function renderCreditsAdmin(){
   $$('[data-remove-credit]').forEach(b=>b.onclick=()=>changeCredits(b.dataset.removeCredit,-1));
 
   if(state.admin){
-    const additionRows=state.accounts.map(a=>{
-      const isSelf=me?.id===a.id;
-      const justification=isSelf?`<div style="margin-top:8px"><label>Justificante obligatorio para adicionarte créditos</label><textarea data-self-addition-justification="${a.id}" rows="2" placeholder="Explica el motivo de esta adición"></textarea></div>`:'';
-      return `<tr><td>${esc(a.username)}${isSelf?' (tú)':''}</td><td>${money(a.credits)}</td><td><input type="number" min="1" value="100" data-addition-input="${a.id}">${justification}</td><td><button data-addition-credit="${a.id}">Adicionar</button> <button class="danger" data-untracked-remove="${a.id}">Retirar</button></td></tr>`;
-    }).join('');
+    const options=state.accounts.map(a=>`<option value="${a.id}">${esc(a.username)}${a.id===me?.id?' (tú)':''} — ${money(a.credits)} créditos</option>`).join('');
     const pending=(state.cashierAdditionRequests||[]).filter(r=>r.status==='pending').map(r=>{
       const cashier=state.accounts.find(a=>a.id===r.cashier_id)?.username||'Cajero eliminado';
       const target=state.accounts.find(a=>a.id===r.target_account_id)?.username||'Cuenta eliminada';
-      return `<tr><td>${new Date(r.created_at).toLocaleString('es-BO')}</td><td>${esc(cashier)}</td><td>${esc(target)}</td><td>${esc(r.description)}</td><td><input type="number" min="1" value="100" data-request-amount="${r.id}"></td><td><button data-approve-addition="${r.id}">Aprobar</button> <button class="danger" data-reject-addition="${r.id}">Rechazar</button></td></tr>`;
+      return `<tr><td>${new Date(r.created_at).toLocaleString('es-BO')}</td><td>${esc(cashier)}</td><td>${esc(target)}</td><td>${money(r.requested_credits||0)}</td><td>${esc(r.description)}</td><td><button data-approve-addition="${r.id}">Aprobar</button> <button class="danger" data-reject-addition="${r.id}">Rechazar</button></td></tr>`;
     }).join('');
-    $('#creditAdditionList').innerHTML=`<table><thead><tr><th>Cuenta</th><th>Saldo</th><th>Créditos</th><th>Acción sin historial</th></tr></thead><tbody>${additionRows||'<tr><td colspan="4">Sin cuentas.</td></tr>'}</tbody></table><div class="panel" style="margin-top:16px"><h3>Solicitudes pendientes de cajeros</h3><table><thead><tr><th>Fecha</th><th>Cajero</th><th>Cuenta</th><th>Dinámica</th><th>Créditos a enviar</th><th>Decisión</th></tr></thead><tbody>${pending||'<tr><td colspan="6">No hay solicitudes pendientes.</td></tr>'}</tbody></table></div>`;
-    $$('[data-addition-credit]').forEach(b=>b.onclick=()=>adminUntrackedCredits(b.dataset.additionCredit,1));
-    $$('[data-untracked-remove]').forEach(b=>b.onclick=()=>adminUntrackedCredits(b.dataset.untrackedRemove,-1));
+    $('#creditAdditionList').innerHTML=`<div class="panel"><h3>Adición directa del administrador</h3><div class="grid"><div><label>Cuenta</label><select id="adminAdditionTarget"><option value="">— Selecciona una cuenta —</option>${options}</select></div><div><label>Cantidad de créditos</label><input id="adminAdditionAmount" type="number" min="1" value="100"></div><div><label>Justificante o descripción de la dinámica</label><textarea id="adminAdditionDescription" rows="3" placeholder="Explica la actividad, dinámica o motivo"></textarea></div></div><div style="display:flex;gap:8px;margin-top:12px"><button id="adminDirectAdd">Adicionar</button><button id="adminDirectRemove" class="danger">Retirar</button></div></div><div class="panel" style="margin-top:16px"><h3>Solicitudes pendientes de cajeros</h3><table><thead><tr><th>Fecha</th><th>Cajero</th><th>Cuenta</th><th>Créditos</th><th>Dinámica</th><th>Decisión</th></tr></thead><tbody>${pending||'<tr><td colspan="6">No hay solicitudes pendientes.</td></tr>'}</tbody></table></div>`;
+    $('#adminDirectAdd').onclick=()=>adminDirectAddition(1);
+    $('#adminDirectRemove').onclick=()=>adminDirectAddition(-1);
     $$('[data-approve-addition]').forEach(b=>b.onclick=()=>reviewAdditionRequest(b.dataset.approveAddition,true));
     $$('[data-reject-addition]').forEach(b=>b.onclick=()=>reviewAdditionRequest(b.dataset.rejectAddition,false));
   }else{
     const options=state.accounts.filter(a=>a.id!==me?.id).map(a=>`<option value="${a.id}">${esc(a.username)}</option>`).join('');
-    $('#creditAdditionList').innerHTML=`<div class="grid"><div><label>Cuenta que recibirá los créditos</label><select id="cashierAdditionTarget"><option value="">— Selecciona una cuenta —</option>${options}</select></div><div><label>¿De qué trata la actividad o dinámica?</label><textarea id="cashierAdditionDescription" rows="4" placeholder="Describe claramente la actividad, premio o dinámica realizada"></textarea></div></div><button id="submitAdditionRequest" style="margin-top:12px">Enviar solicitud al administrador</button><p class="muted" style="margin-top:10px">El administrador revisará la solicitud, definirá la cantidad de créditos y deberá aprobarla antes de que se entreguen.</p>`;
+    $('#creditAdditionList').innerHTML=`<div class="grid"><div><label>Cuenta que recibirá los créditos</label><select id="cashierAdditionTarget"><option value="">— Selecciona una cuenta —</option>${options}</select></div><div><label>Cantidad de créditos</label><input id="cashierAdditionAmount" type="number" min="1" value="100"></div><div><label>Justificante o descripción de la dinámica</label><textarea id="cashierAdditionDescription" rows="4" placeholder="Describe claramente la actividad, premio o dinámica realizada"></textarea></div></div><button id="submitAdditionRequest" style="margin-top:12px">Enviar</button><p class="muted" style="margin-top:10px">Los créditos solo se entregarán cuando un administrador apruebe la solicitud.</p>`;
     $('#submitAdditionRequest').onclick=submitAdditionRequest;
   }
 
@@ -863,23 +859,25 @@ function renderCreditsAdmin(){
 }
 async function submitAdditionRequest(){
   const targetId=$('#cashierAdditionTarget')?.value;
+  const amount=Number($('#cashierAdditionAmount')?.value);
   const description=$('#cashierAdditionDescription')?.value.trim();
   if(!targetId)return alert('Selecciona la cuenta que recibirá los créditos.');
+  if(!Number.isInteger(amount)||amount<1)return alert('Ingresa una cantidad válida de créditos.');
   if(!description)return alert('Debes explicar de qué trata la actividad o dinámica.');
-  const {error}=await supabase.rpc('cashier_request_credit_addition',{p_cashier_id:state.account.id,p_target_id:targetId,p_description:description});
+  const {error}=await supabase.rpc('cashier_request_credit_addition',{p_cashier_id:state.account.id,p_target_id:targetId,p_credits:amount,p_description:description});
   if(error)return alert(error.message);
   alert('Solicitud enviada al administrador.');
   await loadAll();
 }
-async function adminUntrackedCredits(id,sign){
+async function adminDirectAddition(sign){
   if(!state.admin)return;
-  const target=state.accounts.find(x=>x.id===id),input=document.querySelector(`[data-addition-input="${id}"]`),amount=Number(input?.value);
-  if(!target||!Number.isInteger(amount)||amount<1)return alert('Ingresa una cantidad válida.');
-  let justification='';
-  if(sign>0&&state.account?.id===id){
-    justification=document.querySelector(`[data-self-addition-justification="${id}"]`)?.value.trim()||'';
-    if(!justification)return alert('Debes escribir un justificante antes de adicionarte créditos.');
-  }
+  const id=$('#adminAdditionTarget')?.value;
+  const amount=Number($('#adminAdditionAmount')?.value);
+  const description=$('#adminAdditionDescription')?.value.trim();
+  const target=state.accounts.find(x=>x.id===id);
+  if(!target)return alert('Selecciona una cuenta.');
+  if(!Number.isInteger(amount)||amount<1)return alert('Ingresa una cantidad válida.');
+  if(!description)return alert('Debes escribir el justificante o la descripción de la dinámica.');
   const next=target.credits+sign*amount;
   if(next<0)return alert('La cuenta no tiene suficientes créditos.');
   const {error}=await supabase.from('accounts').update({credits:next}).eq('id',id);
@@ -891,8 +889,8 @@ async function reviewAdditionRequest(requestId,approve){
   const request=state.cashierAdditionRequests.find(r=>r.id===requestId);
   if(!request||request.status!=='pending')return alert('La solicitud ya no está pendiente.');
   if(approve){
-    const amount=Number(document.querySelector(`[data-request-amount="${requestId}"]`)?.value);
-    if(!Number.isInteger(amount)||amount<1)return alert('Ingresa una cantidad válida para aprobar.');
+    const amount=Number(request.requested_credits);
+    if(!Number.isInteger(amount)||amount<1)return alert('La solicitud no tiene una cantidad válida.');
     const target=state.accounts.find(a=>a.id===request.target_account_id);
     if(!target)return alert('La cuenta de destino ya no existe.');
     const {error:updateError}=await supabase.from('accounts').update({credits:target.credits+amount}).eq('id',target.id);

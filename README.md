@@ -62,3 +62,7 @@ Ejecuta una sola vez `ACTUALIZAR_JUSTIFICANTE_RECARGA_ADMIN.sql` en Supabase. Cu
 
 ## Actualización v36: solicitudes de dinámicas de cajeros
 Ejecuta una sola vez `ACTUALIZAR_SOLICITUDES_DINAMICAS_CAJEROS.sql`. Los cajeros solo seleccionan la cuenta y describen la dinámica. El administrador decide cuántos créditos entregar y aprueba o rechaza. Las adiciones y retiros directos del administrador en esta pestaña no se registran en el historial de caja.
+
+## Actualización v37
+Ejecuta una sola vez `ACTUALIZAR_SOLICITUDES_DINAMICAS_CAJEROS_V2.sql` en Supabase.
+Los cajeros ahora indican cuenta, cantidad y descripción; el administrador únicamente aprueba o rechaza la cantidad solicitada. El administrador puede hacer adiciones directas indicando cuenta, cantidad y descripción.

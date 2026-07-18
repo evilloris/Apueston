@@ -302,7 +302,6 @@ async function startMineGame(){
   if(!state.account)return alert('Debes iniciar sesión.');
   const cfg=mgSettings(),stake=Number($('#mineGameStake').value);
   if(stake<cfg.min_stake||stake>cfg.max_stake)return alert(`La apuesta debe estar entre ${cfg.min_stake} y ${cfg.max_stake} créditos.`);
-  if(!confirm(`¿Apostar ${money(stake)} créditos en Campo Minado?`))return;
   state.mineGameBusy=true;state.mineGameLastResult=null;renderMineGame();
   const {data,error}=await supabase.rpc('mine_game_start',{p_account_id:state.account.id,p_stake:stake,p_request_id:crypto.randomUUID()});
   state.mineGameBusy=false;
@@ -321,7 +320,6 @@ async function revealMineCell(cell){
 }
 async function cashMineGame(){
   const s=mgSession();if(!s)return;
-  if(!confirm(`¿Cobrar ${money(s.accumulated)} créditos y finalizar la partida?`))return;
   state.mineGameBusy=true;renderMineGame();
   const {data,error}=await supabase.rpc('mine_game_cashout',{p_account_id:state.account.id,p_session_id:s.id});
   state.mineGameBusy=false;
@@ -331,7 +329,6 @@ async function cashMineGame(){
 }
 async function continueMineGame(){
   const s=mgSession();if(!s||!s.level_complete)return;
-  if(!confirm(`¿Arriesgar ${money(s.accumulated)} créditos en el nivel ${Number(s.level)+1}?`))return;
   state.mineGameBusy=true;state.mineGameLastResult=null;renderMineGame();
   const {data,error}=await supabase.rpc('mine_game_continue',{p_account_id:state.account.id,p_session_id:s.id});
   state.mineGameBusy=false;

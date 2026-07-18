@@ -215,3 +215,8 @@ tr.bet-status-lost td{background:rgba(255,92,104,.035)}
 @media(max-width:780px){.daily-wheel-layout{grid-template-columns:1fr}.weekly-daily-prizes{margin-top:0;position:static}}
 
 .reward-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+
+
+/* Filtro de entregas por cuenta */
+.delivery-filter-label{display:block;margin:4px 0 6px;font-size:.9rem;font-weight:700}
+#deliveryAccountFilter{width:100%;margin-bottom:12px}

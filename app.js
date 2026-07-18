@@ -1552,11 +1552,37 @@ function renderRewards(){
     loadAll();
   });
   const requested=state.rewards.filter(r=>r.status==="requested");
-  $("#deliveryList").innerHTML=requested.map(r=>{const a=state.accounts.find(x=>x.id===r.account_id);return`<div class="card"><strong>${esc(a?.username||"Cuenta")}</strong><div>${esc(r.label)}</div><button data-deliver="${r.id}">Confirmar entrega</button></div>`}).join("")||'<div class="muted">Sin solicitudes.</div>';
-  $$("[data-deliver]").forEach(b=>b.onclick=async()=>{
-    await supabase.from("rewards").delete().eq("id",b.dataset.deliver);
-    loadAll();
-  });
+  const filter=$("#deliveryAccountFilter");
+  const previousFilter=filter?.value||"all";
+  const requestedAccountIds=[...new Set(requested.map(r=>r.account_id))];
+  const requestedAccounts=requestedAccountIds
+    .map(id=>state.accounts.find(a=>a.id===id))
+    .filter(Boolean)
+    .sort((a,b)=>String(a.username).localeCompare(String(b.username),"es",{sensitivity:"base"}));
+
+  if(filter){
+    filter.innerHTML='<option value="all">Todas las cuentas</option>'+requestedAccounts
+      .map(a=>`<option value="${a.id}">${esc(a.username)}</option>`).join("");
+    filter.value=requestedAccountIds.includes(previousFilter)?previousFilter:"all";
+  }
+
+  const renderDeliveryRequests=()=>{
+    const selectedAccount=filter?.value||"all";
+    const visibleRequested=selectedAccount==="all"
+      ? requested
+      : requested.filter(r=>r.account_id===selectedAccount);
+    $("#deliveryList").innerHTML=visibleRequested.map(r=>{
+      const a=state.accounts.find(x=>x.id===r.account_id);
+      return`<div class="card"><strong>${esc(a?.username||"Cuenta")}</strong><div>${esc(r.label)}</div><button data-deliver="${r.id}">Confirmar entrega</button></div>`;
+    }).join("")||'<div class="muted">Sin solicitudes para esta cuenta.</div>';
+    $$("[data-deliver]").forEach(b=>b.onclick=async()=>{
+      await supabase.from("rewards").delete().eq("id",b.dataset.deliver);
+      loadAll();
+    });
+  };
+
+  if(filter)filter.onchange=renderDeliveryRequests;
+  renderDeliveryRequests();
 }
 $("#rewardDrawerButton").onclick=()=>$("#rewardDrawer").classList.toggle("open");
 $("#deliveryDrawerButton").onclick=()=>$("#deliveryDrawer").classList.toggle("open");

@@ -259,14 +259,20 @@ function renderBetMatches(){
   const list=state.matches
     .filter(m=>m.tournament_id===tid&&["scheduled","live"].includes(m.status)&&m.side_a&&m.side_b)
     .sort((a,b)=>{
-      const aHasDate=Boolean(a.scheduled_at),bHasDate=Boolean(b.scheduled_at);
-      if(aHasDate&&bHasDate){
-        const dateDifference=new Date(a.scheduled_at)-new Date(b.scheduled_at);
-        if(dateDifference!==0)return dateDifference;
-      }
+      const aTime=a.scheduled_at?Date.parse(a.scheduled_at):NaN;
+      const bTime=b.scheduled_at?Date.parse(b.scheduled_at):NaN;
+      const aHasDate=Number.isFinite(aTime);
+      const bHasDate=Number.isFinite(bTime);
+
+      // Primero, fecha y hora exactas: la pelea más cercana aparece antes.
+      if(aHasDate&&bHasDate&&aTime!==bTime)return aTime-bTime;
       if(aHasDate!==bHasDate)return aHasDate?-1:1;
-      const creationDifference=new Date(a.created_at||0)-new Date(b.created_at||0);
-      if(creationDifference!==0)return creationDifference;
+
+      // Sin fecha (o empate exacto), conservar el orden en que se crearon.
+      const aCreated=Date.parse(a.created_at||'');
+      const bCreated=Date.parse(b.created_at||'');
+      if(Number.isFinite(aCreated)&&Number.isFinite(bCreated)&&aCreated!==bCreated)return aCreated-bCreated;
+
       return Number(a.round_no||0)-Number(b.round_no||0);
     });
   $("#betMatches").innerHTML=list.map((m,index)=>{

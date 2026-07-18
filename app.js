@@ -811,9 +811,7 @@ function renderCreditsAdmin(){
   const rows=state.accounts.map(a=>{
     const isSelf=me?.id===a.id;
     const selfBlocked=!state.admin&&isSelf;
-    const justificationField=state.admin&&isSelf
-      ? `<div style="margin-top:8px"><label>Justificante obligatorio para recargarte a ti mismo</label><textarea data-self-recharge-justification="${a.id}" rows="2" placeholder="Explica el motivo de esta recarga"></textarea></div>`
-      : '';
+    const justificationField='';
     return `<tr><td>${esc(a.username)}${isSelf?' (tú)':''}</td><td>${money(a.credits)}</td><td><input type="number" min="1" value="100" data-credit-input="${a.id}" ${selfBlocked?'disabled':''}>${justificationField}</td><td><button data-add-credit="${a.id}" ${selfBlocked?'disabled':''}>Recargar</button> <button class="danger" data-remove-credit="${a.id}" ${selfBlocked?'disabled':''}>Retirar</button></td></tr>`;
   }).join('');
   $('#creditAdminList').innerHTML=`<table><thead><tr><th>Cuenta</th><th>Saldo</th><th>Monto / justificante</th><th>Acción</th></tr></thead><tbody>${rows||'<tr><td colspan="4">Sin cuentas.</td></tr>'}</tbody></table>`;
@@ -822,7 +820,7 @@ function renderCreditsAdmin(){
 
   const additionRows=state.accounts.map(a=>{
     const selfBlocked=!state.admin&&me?.id===a.id;
-    return `<tr><td>${esc(a.username)}${selfBlocked?' (tú)':''}</td><td>${money(a.credits)}</td><td><input type="number" min="1" value="100" data-addition-input="${a.id}" ${selfBlocked?'disabled':''}></td><td><button data-addition-credit="${a.id}" ${selfBlocked?'disabled':''}>Adicionar</button></td></tr>`;
+    const additionJustification=state.admin&&me?.id===a.id?`<div style="margin-top:8px"><label>Justificante obligatorio para adicionarte créditos</label><textarea data-self-recharge-justification="${a.id}" rows="2" placeholder="Explica el motivo de esta adición"></textarea></div>`:'';return `<tr><td>${esc(a.username)}${selfBlocked?' (tú)':''}</td><td>${money(a.credits)}</td><td><input type="number" min="1" value="100" data-addition-input="${a.id}" ${selfBlocked?'disabled':''}>${additionJustification}</td><td><button data-addition-credit="${a.id}" ${selfBlocked?'disabled':''}>Adicionar</button></td></tr>`;
   }).join('');
   $('#creditAdditionList').innerHTML=`<table><thead><tr><th>Cuenta</th><th>Saldo</th><th>Créditos a adicionar</th><th>Acción</th></tr></thead><tbody>${additionRows||'<tr><td colspan="4">Sin cuentas.</td></tr>'}</tbody></table>`;
   $$('[data-addition-credit]').forEach(b=>b.onclick=()=>addUntrackedCredits(b.dataset.additionCredit));

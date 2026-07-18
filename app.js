@@ -256,12 +256,25 @@ function renderBetTournamentStandings(){
 }
 function renderBetMatches(){
   const tid=$("#betTournamentSelect").value;
-  const list=state.matches.filter(m=>m.tournament_id===tid&&["scheduled","live"].includes(m.status)&&m.side_a&&m.side_b);
-  $("#betMatches").innerHTML=list.map(m=>{
+  const list=state.matches
+    .filter(m=>m.tournament_id===tid&&["scheduled","live"].includes(m.status)&&m.side_a&&m.side_b)
+    .sort((a,b)=>{
+      const aHasDate=Boolean(a.scheduled_at),bHasDate=Boolean(b.scheduled_at);
+      if(aHasDate&&bHasDate){
+        const dateDifference=new Date(a.scheduled_at)-new Date(b.scheduled_at);
+        if(dateDifference!==0)return dateDifference;
+      }
+      if(aHasDate!==bHasDate)return aHasDate?-1:1;
+      const creationDifference=new Date(a.created_at||0)-new Date(b.created_at||0);
+      if(creationDifference!==0)return creationDifference;
+      return Number(a.round_no||0)-Number(b.round_no||0);
+    });
+  $("#betMatches").innerHTML=list.map((m,index)=>{
     const o=dynamicOdds(m);
     const blocked=accountParticipatesInMatch(m);
+    const displayedRound=index+1;
     return `<div class="card match clickable${blocked?" bet-blocked":""}" data-bet-match="${m.id}">
-      <div class="muted">${esc(m.phase)} · ronda ${m.round_no}${blocked?" · No puedes apostar en tu propia partida":""}</div>
+      <div class="muted">${esc(m.phase)} · ronda ${displayedRound}${blocked?" · No puedes apostar en tu propia partida":""}</div>
       <div class="teams"><span>${esc(participantName(m.side_a))}${m.status==="live"?`<small class="live-score">${m.score_a??0}</small>`:""}</span><span>${m.status==="live"?'<b class="live-label">● EN VIVO</b>':"vs"}</span><span>${esc(participantName(m.side_b))}${m.status==="live"?`<small class="live-score">${m.score_b??0}</small>`:""}</span></div>
       <div class="odds"><span>x${o.a}</span><span>x${o.b}</span></div>
       ${(()=>{

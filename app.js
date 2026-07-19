@@ -590,8 +590,17 @@ function dynamicOdds(match){
     pA=ia/(ia+ib);
   }else pA=expected(eloA,eloB);
 
-  // Presión moderada por dinero apostado. Solo cuenta apuestas pendientes al ganador.
-  const winnerBets=state.bets.filter(b=>b.match_id===match.id&&b.bet_type==='winner'&&b.status==='pending');
+  // Presión moderada por dinero apostado. Las selecciones al ganador dentro de una combinada
+  // afectan la cuota del mismo modo que una apuesta individual.
+  const winnerBets=state.bets
+    .filter(b=>b.status==='pending')
+    .flatMap(b=>{
+      if(b.match_id===match.id&&b.bet_type==='winner')return [{selection:b.selection,stake:b.stake}];
+      if(b.bet_type!=='parlay')return [];
+      return (b.selection?.legs||[])
+        .filter(leg=>leg.match_id===match.id&&leg.bet_type==='winner')
+        .map(leg=>({selection:leg.selection,stake:b.stake}));
+    });
   const stakeA=winnerBets.filter(b=>b.selection?.participant_id===match.side_a).reduce((n,b)=>n+Number(b.stake||0),0);
   const stakeB=winnerBets.filter(b=>b.selection?.participant_id===match.side_b).reduce((n,b)=>n+Number(b.stake||0),0);
   const total=stakeA+stakeB;

@@ -1222,7 +1222,7 @@ $("#createTournament").onclick=async()=>{
 };
 
 function renderTournamentsAdmin(){
-  $("#tournamentAdminList").innerHTML=state.tournaments.filter(t=>!isIndividualEvent(t)).map(t=>{
+  $("#tournamentAdminList").innerHTML=state.tournaments.filter(t=>!isIndividualEvent(t)&&t.status!=="finished").map(t=>{
     const count=t.config?.participant_count||0;
     return `<div class="card">
       <strong>${esc(t.name)}</strong>

@@ -850,7 +850,12 @@ function renderMyBets(){
   if(!state.account){$("#myBets").innerHTML='<div class="muted">Inicia sesión.</div>';return}
   const rows=state.bets.filter(b=>b.account_id===state.account.id).map(b=>{
     const info=betStatusInfo(b.status);
-    const detail=b.bet_type==='parlay'?`<div class="bet-detail">${esc(parlayDetail(b))}</div>`:'';
+    const match=state.matches.find(m=>m.id===b.match_id);
+    const selectionDetail=b.bet_type==='parlay'
+      ? parlayDetail(b)
+      : describeBetSelection(b.bet_type,b.selection,match);
+    const potentialGain=Number(b.stake||0)*Number(b.locked_odds||0);
+    const detail=`${selectionDetail?`<div class="bet-detail">${esc(selectionDetail)}</div>`:''}<div class="bet-detail"><strong>Ganancia:</strong> ${money(potentialGain)}</div>`;
     return `<tr class="${info.className}"><td>${esc(betTypeLabel(b.bet_type))}${detail}</td><td>${money(b.stake)}</td><td>x${Number(b.locked_odds).toFixed(3)}</td><td><span class="bet-status ${info.className}">${esc(info.label)}</span></td><td>${money(b.payout||0)}</td></tr>`;
   }).join("");
   $("#myBets").innerHTML=`<table><thead><tr><th>Tipo</th><th>Monto</th><th>Cuota</th><th>Estado</th><th>Pago</th></tr></thead><tbody>${rows||'<tr><td colspan="5">Sin apuestas.</td></tr>'}</tbody></table>`;

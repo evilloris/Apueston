@@ -15,6 +15,8 @@ create table if not exists public.announcement_replies (
   announcement_id uuid not null references public.announcements(id) on delete cascade,
   account_id uuid not null references public.accounts(id) on delete cascade,
   body text not null check (char_length(body) between 1 and 1000),
+  edited_once boolean not null default false,
+  edited_at timestamptz,
   created_at timestamptz not null default now()
 );
 

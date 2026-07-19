@@ -13,6 +13,7 @@ const money = n => new Intl.NumberFormat("es-BO").format(Number(n || 0));
 let state = {
   admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[], cashierTransactions:[], cashierAdditionRequests:[], announcements:[], announcementReplies:[], polls:[], pollOptions:[], pollVotes:[], numberGameSettings:null, numberGameSessions:[], numberGameRounds:[], numberGameBusy:false, numberGameSelectedMargin:5, numberGameTab:"games", mineGameSettings:null, mineGameSession:null, mineGameBusy:false, mineGameLastResult:null, cashierTab:"cash"
 };
+let editingAnnouncementId = null;
 let pendingPaidReward = null;
 let wheelRotation = 0;
 let parlayCart = [];
@@ -388,10 +389,38 @@ $("#nav").addEventListener("click",e=>{const b=e.target.closest("[data-view]");i
 
 function modal(id,open=true){ $(id).classList.toggle("open",open); }
 $$("[data-close-modal]").forEach(b=>b.onclick=()=>b.closest(".modal").classList.remove("open"));
-$("#openAnnouncementCreator").onclick=()=>{if(state.admin)modal("#announcementModal")};
+$("#openAnnouncementCreator").onclick=()=>{
+  if(!state.admin)return;
+  editingAnnouncementId=null;
+  $("#announcementTitle").value="";
+  $("#announcementBody").value="";
+  $("#announcementReplies").checked=false;
+  $("#announcementModal h2").textContent="Crear nuevo comunicado";
+  $("#createAnnouncement").textContent="Publicar comunicado";
+  modal("#announcementModal");
+};
 $("#openPollCreator").onclick=()=>{if(state.admin){resetPollOptionEditor();modal("#pollModal")}};
 $("#addPollOption").onclick=()=>addPollOptionField();
-$("#createAnnouncement").onclick=async()=>{if(!state.admin)return;const title=$("#announcementTitle").value.trim(),body=$("#announcementBody").value.trim();if(!title||!body){alert("Completa el título y el texto.");return}const {error}=await supabase.from("announcements").insert({title,body,allow_replies:$("#announcementReplies").checked,created_by:state.account?.id||null});if(error){alert(error.message);return}$("#announcementTitle").value="";$("#announcementBody").value="";$("#announcementReplies").checked=false;modal("#announcementModal",false);await loadAll()};
+$("#createAnnouncement").onclick=async()=>{
+  if(!state.admin)return;
+  const title=$("#announcementTitle").value.trim();
+  const body=$("#announcementBody").value.trim();
+  if(!title||!body){alert("Completa el título y el texto.");return}
+  const values={title,body,allow_replies:$("#announcementReplies").checked};
+  const query=editingAnnouncementId
+    ? supabase.from("announcements").update(values).eq("id",editingAnnouncementId)
+    : supabase.from("announcements").insert({...values,created_by:state.account?.id||null});
+  const {error}=await query;
+  if(error){alert(error.message);return}
+  editingAnnouncementId=null;
+  $("#announcementTitle").value="";
+  $("#announcementBody").value="";
+  $("#announcementReplies").checked=false;
+  $("#announcementModal h2").textContent="Crear nuevo comunicado";
+  $("#createAnnouncement").textContent="Publicar comunicado";
+  modal("#announcementModal",false);
+  await loadAll();
+};
 $("#createPoll").onclick=async()=>{if(!state.admin)return;const question=$("#pollQuestion").value.trim(),labels=$$(".poll-option-input").map(x=>x.value.trim()).filter(Boolean);if(!question||labels.length<2){alert("Escribe la pregunta y al menos 2 opciones.");return}const {data:poll,error}=await supabase.from("polls").insert({question,created_by:state.account?.id||null}).select("*").single();if(error){alert(error.message);return}const {error:optionsError}=await supabase.from("poll_options").insert(labels.map((label,i)=>({poll_id:poll.id,label,sort_order:i})));if(optionsError){await supabase.from("polls").delete().eq("id",poll.id);alert(optionsError.message);return}$("#pollQuestion").value="";modal("#pollModal",false);await loadAll()};
 $("#loginButton").onclick=()=>modal("#loginModal");
 $("#logoutButton").onclick=()=>{state.account=null;localStorage.removeItem("liga_account");renderAll()};
@@ -416,14 +445,45 @@ function renderCommunityFeed(){
   root.innerHTML=items.map(item=>{
     if(item.communityType==="announcement"){
       const replies=state.announcementReplies.filter(r=>r.announcement_id===item.id);
-      const replyBox=item.allow_replies?`<div class="community-replies">${replies.map(r=>`<div class="community-reply"><strong>${esc(communityAuthor(r.account_id))}</strong><span>${esc(r.body)}</span><small>${esc(communityDate(r.created_at))}</small></div>`).join("")||'<div class="muted">Todavía no hay respuestas.</div>'}${state.account?`<div class="community-reply-form"><input data-reply-input="${item.id}" maxlength="1000" placeholder="Escribe una respuesta"><button data-send-reply="${item.id}">Responder</button></div>`:'<div class="muted">Inicia sesión para responder.</div>'}</div>`:'<div class="muted">Las respuestas están deshabilitadas.</div>';
-      return `<article class="card community-card"><div class="community-type">📢 Comunicado</div><h3>${esc(item.title)}</h3><div class="community-body">${esc(item.body).replace(/\n/g,"<br>")}</div><div class="muted">${esc(communityDate(item.created_at))}</div>${replyBox}${state.admin?`<button class="danger community-delete" data-delete-announcement="${item.id}">Eliminar</button>`:""}</article>`;
+      const replyBox=item.allow_replies?`<div class="community-replies">${replies.map(r=>`<div class="community-reply"><strong>${esc(communityAuthor(r.account_id))}</strong><span>${esc(r.body)}</span><small>${esc(communityDate(r.created_at))}${r.edited_at?' · Editada':''}</small>${state.account?.id===r.account_id&&!r.edited_once?`<button class="secondary" data-edit-reply="${r.id}">Editar respuesta</button>`:''}</div>`).join("")||'<div class="muted">Todavía no hay respuestas.</div>'}${state.account?`<div class="community-reply-form"><input data-reply-input="${item.id}" maxlength="1000" placeholder="Escribe una respuesta"><button data-send-reply="${item.id}">Responder</button></div>`:'<div class="muted">Inicia sesión para responder.</div>'}</div>`:'<div class="muted">Las respuestas están deshabilitadas.</div>';
+      return `<article class="card community-card"><div class="community-type">📢 Comunicado</div><h3>${esc(item.title)}</h3><div class="community-body">${esc(item.body).replace(/\n/g,"<br>")}</div><div class="muted">${esc(communityDate(item.created_at))}</div>${replyBox}${state.admin?`<div class="row community-admin-actions"><button class="secondary" data-edit-announcement="${item.id}">Editar</button><button class="danger community-delete" data-delete-announcement="${item.id}">Eliminar</button></div>`:""}</article>`;
     }
     const options=state.pollOptions.filter(o=>o.poll_id===item.id),votes=state.pollVotes.filter(v=>v.poll_id===item.id),total=votes.length,mine=state.account?votes.find(v=>v.account_id===state.account.id):null;
     return `<article class="card community-card"><div class="community-type">📊 Encuesta</div><h3>${esc(item.question)}</h3><div class="poll-options">${options.map(o=>{const count=votes.filter(v=>v.option_id===o.id).length,pct=total?Math.round(count*100/total):0;return `<button class="poll-option ${mine?.option_id===o.id?'selected':''}" data-vote-option="${o.id}" data-poll-id="${item.id}" ${!state.account?'disabled':''}><span>${esc(o.label)}</span><strong>${pct}%</strong><div class="poll-bar"><i style="width:${pct}%"></i></div><small>${count} voto${count===1?'':'s'}</small></button>`}).join("")}</div><div class="muted">${total} voto${total===1?'':'s'} · ${esc(communityDate(item.created_at))}${!state.account?' · Inicia sesión para votar.':''}</div>${state.admin?`<button class="danger community-delete" data-delete-poll="${item.id}">Eliminar</button>`:""}</article>`;
   }).join("")||'<div class="muted">Todavía no hay comunicados ni encuestas.</div>';
   $$('[data-send-reply]').forEach(b=>b.onclick=async()=>{const input=$(`[data-reply-input="${b.dataset.sendReply}"]`),body=input?.value.trim();if(!state.account||!body)return;const {error}=await supabase.from('announcement_replies').insert({announcement_id:b.dataset.sendReply,account_id:state.account.id,body});if(error)alert(error.message);else await loadAll()});
   $$('[data-vote-option]').forEach(b=>b.onclick=async()=>{if(!state.account)return;const {error}=await supabase.from('poll_votes').upsert({poll_id:b.dataset.pollId,option_id:b.dataset.voteOption,account_id:state.account.id},{onConflict:'poll_id,account_id'});if(error)alert(error.message);else await loadAll()});
+  $$('[data-edit-announcement]').forEach(b=>b.onclick=()=>{
+    if(!state.admin)return;
+    const item=state.announcements.find(x=>x.id===b.dataset.editAnnouncement);
+    if(!item)return;
+    editingAnnouncementId=item.id;
+    $("#announcementTitle").value=item.title||"";
+    $("#announcementBody").value=item.body||"";
+    $("#announcementReplies").checked=!!item.allow_replies;
+    $("#announcementModal h2").textContent="Editar comunicado";
+    $("#createAnnouncement").textContent="Guardar cambios";
+    modal("#announcementModal");
+  });
+  $$('[data-edit-reply]').forEach(b=>b.onclick=async()=>{
+    if(!state.account)return;
+    const reply=state.announcementReplies.find(x=>x.id===b.dataset.editReply);
+    if(!reply||reply.account_id!==state.account.id||reply.edited_once)return;
+    const body=prompt("Edita tu respuesta:",reply.body||"");
+    if(body===null)return;
+    const clean=body.trim();
+    if(!clean){alert("La respuesta no puede quedar vacía.");return}
+    const {data,error}=await supabase.from("announcement_replies")
+      .update({body:clean,edited_once:true,edited_at:new Date().toISOString()})
+      .eq("id",reply.id)
+      .eq("account_id",state.account.id)
+      .eq("edited_once",false)
+      .select("id")
+      .maybeSingle();
+    if(error){alert(error.message);return}
+    if(!data){alert("Esta respuesta ya fue editada una vez.");return}
+    await loadAll();
+  });
   $$('[data-delete-announcement]').forEach(b=>b.onclick=async()=>{if(state.admin&&confirm('¿Eliminar este comunicado?')){await supabase.from('announcements').delete().eq('id',b.dataset.deleteAnnouncement);await loadAll()}});
   $$('[data-delete-poll]').forEach(b=>b.onclick=async()=>{if(state.admin&&confirm('¿Eliminar esta encuesta?')){await supabase.from('polls').delete().eq('id',b.dataset.deletePoll);await loadAll()}});
 }

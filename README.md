@@ -80,3 +80,9 @@ Antes de usar esta versión, ejecuta una sola vez en Supabase:
 `ACTUALIZAR_COMUNICADOS_Y_ENCUESTAS.sql`
 
 En Inicio, el administrador puede crear comunicados con respuestas opcionales y encuestas con cualquier cantidad de opciones. Los usuarios pueden responder y votar con su cuenta.
+
+
+## v41 · Edición de comunicados y respuestas
+
+El administrador puede editar comunicados. Cada usuario puede editar una sola vez cada respuesta propia.
+Si ya ejecutaste la migración de v40, ejecuta `ACTUALIZAR_EDICION_COMUNICADOS_Y_RESPUESTAS.sql` una sola vez.

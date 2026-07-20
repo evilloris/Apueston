@@ -86,3 +86,9 @@ En Inicio, el administrador puede crear comunicados con respuestas opcionales y 
 
 El administrador puede editar comunicados. Cada usuario puede editar una sola vez cada respuesta propia.
 Si ya ejecutaste la migración de v40, ejecuta `ACTUALIZAR_EDICION_COMUNICADOS_Y_RESPUESTAS.sql` una sola vez.
+
+
+## v45 · 1025 Pokémon y ruleta por generaciones
+- Se cargaron los 1025 Pokémon con su código Pokédex y clasificación.
+- La ruleta completa conserva su lógica y precios anteriores.
+- Por generación: 500 créditos por giro o 4500 por 10.

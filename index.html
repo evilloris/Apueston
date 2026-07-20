@@ -127,7 +127,17 @@
     </div>
     <div class="panel">
       <h2>Ruleta Pokémon</h2>
-      <p class="muted">Los nombres pasan rápidamente y se frenan hasta revelar el Pokémon obtenido.</p>
+      <p class="muted">Los nombres pasan rápidamente y se frenan hasta revelar el Pokémon obtenido. La ruleta completa conserva sus probabilidades originales; también puedes limitar los resultados a una generación.</p>
+      <label style="display:block;margin-bottom:12px">Pokémon disponibles
+        <select id="paidGenerationSelect" style="width:100%;margin-top:6px">
+          <option value="all">Todos los Pokémon · 100 créditos / 900 por 10</option>
+          <option value="1">1ra generación · 0001-0151 · 500 / 4500</option><option value="2">2da generación · 0152-0251 · 500 / 4500</option>
+          <option value="3">3ra generación · 0252-0386 · 500 / 4500</option><option value="4">4ta generación · 0387-0493 · 500 / 4500</option>
+          <option value="5">5ta generación · 0494-0649 · 500 / 4500</option><option value="6">6ta generación · 0650-0721 · 500 / 4500</option>
+          <option value="7">7ma generación · 0722-0809 · 500 / 4500</option><option value="8">8va generación · 0810-0905 · 500 / 4500</option>
+          <option value="9">9na generación · 0906-1025 · 500 / 4500</option>
+        </select>
+      </label>
       <div id="paidPokemonReel" class="pokemon-reel" aria-live="polite">
         <div class="reel-line reel-line-faded" id="reelPrevious">Pulsa girar</div>
         <div class="reel-selector">
@@ -393,6 +403,6 @@
   </div>
 </div>
 
-<script type="module" src="./app.js?v=44"></script>
+<script type="module" src="./app.js?v=45"></script>
 </body>
 </html>

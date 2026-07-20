@@ -112,3 +112,12 @@ Se agregó debajo de la Ruleta Pokémon un buscador por nombre o código Pokéde
 - “Mis recompensas” ahora tiene las pestañas “Recompensas” y “Pendientes”.
 - “Recompensas” muestra solo las disponibles; “Pendientes” muestra las ya reclamadas y aún no entregadas.
 - No requiere SQL nuevo.
+
+
+## v50 · Ajuste de probabilidades y selección de recompensas
+
+- En la ruleta por generación, cada Pokémon no común tiene una probabilidad individual 5 veces menor que un Pokémon común de esa misma generación.
+- Se corrigió la carga del código nuevo de recompensas mediante actualización de versión de caché (`app.js?v=50` y `styles.css?v=50`).
+- Las casillas aparecen a la derecha de cada recompensa disponible.
+- “Seleccionar todas” selecciona correctamente las recompensas visibles y actualiza el contador.
+- No requiere cambios SQL.

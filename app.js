@@ -1963,7 +1963,12 @@ function renderPokemonGenerationSearch(){
   }).join('');
 }
 function createGenerationPokemonPrize(generation){
-  const p=normalizePokemonPrize(randomItem(generationPokemonPool(generation)));
+  const pool=generationPokemonPool(generation);
+  // Al elegir una generación, los Pokémon que no son comunes tienen
+  // una probabilidad individual 5 veces menor que los comunes.
+  const weightedPool=pool.map(p=>({pokemon:p,weight:p.categoryKey==='common'?1:0.2}));
+  const selected=weightedPick(weightedPool).pokemon;
+  const p=normalizePokemonPrize(selected);
   return applyRegionalForm({...p,label:`${p.pokemon} · ${p.category}`,rewardLabel:`${p.pokemon} — ${p.category} (${p.difficulty})`});
 }
 function paidSpinPricing(){const generation=selectedPaidGeneration();return generation?{one:500,ten:4500,generation}:{one:100,ten:900,generation:null}}

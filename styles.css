@@ -149,6 +149,12 @@ table{min-width:620px}
 .category-starter{color:#33d17a;background:rgba(51,209,122,.12)}
 .category-fossil{color:#d6a86e;background:rgba(214,168,110,.12)}
 .category-common{color:#adb5bd;background:rgba(173,181,189,.12)}
+.reel-badges{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px}
+.pokemon-form{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;padding:5px 11px;font-size:11px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;border:1px solid currentColor}
+.form-normal{color:#adb5bd;background:rgba(173,181,189,.12)}
+.form-alola{color:#40e0d0;background:rgba(64,224,208,.14)}
+.form-galar{color:#d7aefb;background:rgba(215,174,251,.14)}
+.form-hisui{color:#fff;background:rgba(255,255,255,.12)}
 .pokemon-reel.spinning .reel-selector strong{filter:blur(.5px)}
 .pokemon-reel.finished{border-color:var(--gold);box-shadow:0 0 0 2px rgba(245,189,22,.14),inset 0 0 28px rgba(0,0,0,.55)}
 @media(max-width:700px){.pokemon-reel{padding:13px 10px}.reel-selector{min-height:92px}.category-legend{gap:5px}}

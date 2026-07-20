@@ -1897,6 +1897,29 @@ function seededRandom(seedText){let h=2166136261;for(const ch of seedText){h^=ch
 function sundayWeekKey(){const now=new Date();const local=new Date(new Intl.DateTimeFormat('en-US',{timeZone:CONFIG.DAILY_WHEEL_TIMEZONE,year:'numeric',month:'2-digit',day:'2-digit'}).format(now));const day=local.getDay();local.setDate(local.getDate()-day);return local.toISOString().slice(0,10)}
 function pokemonDisplay(p){return `${p.code} - ${p.name}`}
 function normalizePokemonPrize(p){return {...p,pokemon:pokemonDisplay(p)}}
+const REGIONAL_FORMS={
+  19:['alola'],20:['alola'],26:['alola'],27:['alola'],28:['alola'],37:['alola'],38:['alola'],50:['alola'],51:['alola'],
+  52:['alola','galar'],53:['alola'],74:['alola'],75:['alola'],76:['alola'],88:['alola'],89:['alola'],103:['alola'],105:['alola'],
+  77:['galar'],78:['galar'],79:['galar'],80:['galar'],83:['galar'],110:['galar'],122:['galar'],144:['galar'],145:['galar'],146:['galar'],
+  199:['galar'],222:['galar'],263:['galar'],264:['galar'],554:['galar'],555:['galar'],562:['galar'],618:['galar'],
+  58:['hisui'],59:['hisui'],100:['hisui'],101:['hisui'],157:['hisui'],211:['hisui'],215:['hisui'],503:['hisui'],549:['hisui'],
+  570:['hisui'],571:['hisui'],628:['hisui'],705:['hisui'],706:['hisui'],713:['hisui'],724:['hisui'],901:['hisui']
+};
+const REGIONAL_FORM_LABELS={normal:'Forma normal',alola:'Forma de Alola',galar:'Forma de Galar',hisui:'Forma de Hisui'};
+function applyRegionalForm(prize,rng=Math.random){
+  if(prize.regionalForm)return prize;
+  const available=REGIONAL_FORMS[Number(prize.dex)]||[];
+  if(!available.length)return {...prize,regionalForm:null,regionalFormLabel:null};
+  const regionalForm=randomItem(['normal',...available],rng);
+  const regionalFormLabel=REGIONAL_FORM_LABELS[regionalForm];
+  return {
+    ...prize,
+    regionalForm,
+    regionalFormLabel,
+    label:`${prize.pokemon} · ${prize.category} · ${regionalFormLabel}`,
+    rewardLabel:`${prize.pokemon} — ${prize.category} (${prize.difficulty}) — ${regionalFormLabel}`
+  };
+}
 function impossiblePokemon(rng=Math.random){const category=randomItem(IMPOSSIBLE_CATEGORIES,rng);return normalizePokemonPrize(randomItem(category.pool,rng))}
 function pokemonReward(category,rng=Math.random){
   if(category==='impossible')return impossiblePokemon(rng);
@@ -1910,7 +1933,7 @@ const POKEMON_GENERATIONS={
 };
 function selectedPaidGeneration(){const value=$('#paidGenerationSelect')?.value||'all';return value==='all'?null:Number(value)}
 function generationPokemonPool(generation){const range=POKEMON_GENERATIONS[generation];return range?ALL_POKEMON.filter(p=>p.dex>=range.min&&p.dex<=range.max):ALL_POKEMON}
-function createGenerationPokemonPrize(generation){return normalizePokemonPrize(randomItem(generationPokemonPool(generation)))}
+function createGenerationPokemonPrize(generation){return applyRegionalForm(normalizePokemonPrize(randomItem(generationPokemonPool(generation))))}
 function paidSpinPricing(){const generation=selectedPaidGeneration();return generation?{one:500,ten:4500,generation}:{one:100,ten:900,generation:null}}
 function updatePaidSpinControls(){
   const pricing=paidSpinPricing();
@@ -2035,6 +2058,12 @@ function setPaidReelPokemon(prize,previousName='',nextName=''){
   categoryEl.textContent=prize.category;
   categoryEl.classList.remove(...PAID_CATEGORY_CLASSES);
   categoryEl.classList.add(`category-${prize.categoryKey||'common'}`);
+  const formEl=$('#reelPokemonForm');
+  if(formEl){
+    formEl.hidden=!prize.regionalFormLabel;
+    formEl.textContent=prize.regionalFormLabel||'';
+    formEl.className=`pokemon-form${prize.regionalForm?` form-${prize.regionalForm}`:''}`;
+  }
   $('#reelPrevious').textContent=previousName||randomPaidPreview().pokemon;
   $('#reelNext').textContent=nextName||randomPaidPreview().pokemon;
 }
@@ -2060,7 +2089,7 @@ async function paidSpin(){
   await animatePaidPokemonReel(finalPrize);
   return finalPrize;
 }
-function createPaidPokemonPrizeForCategory(key){const p=pokemonReward(key);return {...p,label:`${p.pokemon} · ${p.category}`,rewardLabel:`${p.pokemon} — ${p.category} (${p.difficulty})`}}
+function createPaidPokemonPrizeForCategory(key){const p=pokemonReward(key);return applyRegionalForm({...p,label:`${p.pokemon} · ${p.category}`,rewardLabel:`${p.pokemon} — ${p.category} (${p.difficulty})`})}
 $('#spinPaidButton').onclick=async()=>{
   const pricing=paidSpinPricing();
   if(!state.account||state.account.credits<pricing.one){alert(`Necesitas ${pricing.one} créditos.`);return}
@@ -2069,7 +2098,7 @@ $('#spinPaidButton').onclick=async()=>{
     const {error}=await supabase.from('accounts').update({credits:state.account.credits-pricing.one}).eq('id',state.account.id);
     if(error)throw error;
     pendingPaidReward=await paidSpin();
-    $('#paidResult').innerHTML=`Salió: <strong>${esc(pendingPaidReward.pokemon)}</strong><br><span class="pokemon-category category-${esc(pendingPaidReward.categoryKey)}">${esc(pendingPaidReward.category)}</span>`;
+    $('#paidResult').innerHTML=`Salió: <strong>${esc(pendingPaidReward.pokemon)}</strong><br><span class="pokemon-category category-${esc(pendingPaidReward.categoryKey)}">${esc(pendingPaidReward.category)}</span>${pendingPaidReward.regionalFormLabel?` <span class="pokemon-form form-${esc(pendingPaidReward.regionalForm)}">${esc(pendingPaidReward.regionalFormLabel)}</span>`:''}`;
     $('#acceptPaidReward').hidden=false;
     await loadAll();
   }catch(error){console.error(error);$('#paidResult').textContent='No se pudo completar el giro.'}

@@ -92,3 +92,8 @@ Si ya ejecutaste la migración de v40, ejecuta `ACTUALIZAR_EDICION_COMUNICADOS_Y
 - Se cargaron los 1025 Pokémon con su código Pokédex y clasificación.
 - La ruleta completa conserva su lógica y precios anteriores.
 - Por generación: 500 créditos por giro o 4500 por 10.
+
+
+## v46 · Formas regionales automáticas
+
+Los Pokémon indicados pueden obtener forma normal, de Alola, de Galar o de Hisui mediante una segunda selección automática. La forma aparece junto a la clasificación y queda guardada en la recompensa.

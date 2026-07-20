@@ -300,3 +300,12 @@ body.admin .minigame-subtabs:not([hidden]){display:flex !important}
 .inline-check{display:flex;gap:8px;align-items:center}
 .inline-check input{width:auto}
 @media(max-width:650px){.community-reply{grid-template-columns:1fr}.community-reply-form{grid-template-columns:1fr}.home-admin-actions{display:grid}.home-admin-actions button{width:100%}}
+
+
+.pokemon-search-box{margin-top:18px;padding-top:16px;border-top:1px solid var(--border)}
+.pokemon-search-box h3{margin:0 0 6px}
+.pokemon-search-box input{width:100%;margin-top:8px}
+.pokemon-search-results{display:grid;gap:8px;margin-top:10px;max-height:320px;overflow:auto}
+.pokemon-search-result{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card)}
+.pokemon-search-result span{white-space:nowrap;color:var(--muted)}
+@media(max-width:600px){.pokemon-search-result{align-items:flex-start;flex-direction:column;gap:4px}.pokemon-search-result span{white-space:normal}}

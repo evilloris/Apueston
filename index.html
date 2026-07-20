@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#090d14">
   <title>Liga Pokémon · Poképachanga</title>
-  <link rel="stylesheet" href="./styles.css?v=27">
+  <link rel="stylesheet" href="./styles.css?v=47">
 </head>
 <body>
 <header>
@@ -161,6 +161,13 @@
       <div class="row" style="margin-top:16px"><button id="spinPaidButton">1 tiro · 100 créditos</button><button id="spinPaidTenButton" class="secondary">10 tiros · 900 créditos</button></div>
       <div id="paidResult" class="card" style="margin-top:12px">Sin girar.</div>
       <button id="acceptPaidReward" hidden style="width:100%;margin-top:10px">Aceptar recompensa</button>
+
+      <div class="pokemon-search-box">
+        <h3>Buscar Pokémon por nombre o código</h3>
+        <p class="muted">Escribe un nombre o número de Pokédex para saber a qué generación pertenece.</p>
+        <input id="pokemonGenerationSearch" type="search" placeholder="Ej.: Pikachu, 0025 o 25" autocomplete="off">
+        <div id="pokemonGenerationSearchResults" class="pokemon-search-results">Escribe al menos un carácter para buscar.</div>
+      </div>
     </div>
   </section>
 
@@ -403,6 +410,6 @@
   </div>
 </div>
 
-<script type="module" src="./app.js?v=46"></script>
+<script type="module" src="./app.js?v=47"></script>
 </body>
 </html>

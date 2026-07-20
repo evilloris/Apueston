@@ -367,6 +367,8 @@ $('#mineGameStart').onclick=startMineGame;
 $('#mineGameCash').onclick=cashMineGame;
 $('#mineGameContinue').onclick=continueMineGame;
 
+if($('#pokemonGenerationSearch'))$('#pokemonGenerationSearch').oninput=renderPokemonGenerationSearch;
+
 renderWeeklyDailyPrizes(); updateDailyButton(); renderNumberGame(); renderMineGame();
 }
 function switchView(view){
@@ -1933,6 +1935,33 @@ const POKEMON_GENERATIONS={
 };
 function selectedPaidGeneration(){const value=$('#paidGenerationSelect')?.value||'all';return value==='all'?null:Number(value)}
 function generationPokemonPool(generation){const range=POKEMON_GENERATIONS[generation];return range?ALL_POKEMON.filter(p=>p.dex>=range.min&&p.dex<=range.max):ALL_POKEMON}
+function pokemonGenerationNumber(dex){
+  const entry=Object.entries(POKEMON_GENERATIONS).find(([,range])=>dex>=range.min&&dex<=range.max);
+  return entry?Number(entry[0]):null;
+}
+function normalizePokemonSearchText(value){
+  return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+}
+function renderPokemonGenerationSearch(){
+  const input=$('#pokemonGenerationSearch');
+  const results=$('#pokemonGenerationSearchResults');
+  if(!input||!results)return;
+  const raw=input.value.trim();
+  if(!raw){results.textContent='Escribe al menos un carácter para buscar.';return}
+  const query=normalizePokemonSearchText(raw);
+  const numeric=raw.replace(/^0+/,'');
+  const matches=ALL_POKEMON.filter(p=>{
+    const name=normalizePokemonSearchText(p.name);
+    const code=String(p.code);
+    return name.includes(query)||code.includes(raw)||String(p.dex)===numeric;
+  }).slice(0,30);
+  if(!matches.length){results.innerHTML='<span class="muted">No se encontró ningún Pokémon.</span>';return}
+  results.innerHTML=matches.map(p=>{
+    const generation=pokemonGenerationNumber(p.dex);
+    const generationLabel=generation?POKEMON_GENERATIONS[generation].label:'Generación desconocida';
+    return `<div class="pokemon-search-result"><strong>${esc(p.code)} - ${esc(p.name)}</strong><span>${esc(generationLabel)}</span></div>`;
+  }).join('');
+}
 function createGenerationPokemonPrize(generation){return applyRegionalForm(normalizePokemonPrize(randomItem(generationPokemonPool(generation))))}
 function paidSpinPricing(){const generation=selectedPaidGeneration();return generation?{one:500,ten:4500,generation}:{one:100,ten:900,generation:null}}
 function updatePaidSpinControls(){

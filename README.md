@@ -97,3 +97,8 @@ Si ya ejecutaste la migración de v40, ejecuta `ACTUALIZAR_EDICION_COMUNICADOS_Y
 ## v46 · Formas regionales automáticas
 
 Los Pokémon indicados pueden obtener forma normal, de Alola, de Galar o de Hisui mediante una segunda selección automática. La forma aparece junto a la clasificación y queda guardada en la recompensa.
+
+
+## v47 · Buscador de Pokémon
+
+Se agregó debajo de la Ruleta Pokémon un buscador por nombre o código Pokédex que muestra la generación correspondiente. No requiere SQL nuevo.

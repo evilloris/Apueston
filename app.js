@@ -1962,7 +1962,10 @@ function renderPokemonGenerationSearch(){
     return `<div class="pokemon-search-result"><strong>${esc(p.code)} - ${esc(p.name)}</strong><span>${esc(generationLabel)}</span></div>`;
   }).join('');
 }
-function createGenerationPokemonPrize(generation){return applyRegionalForm(normalizePokemonPrize(randomItem(generationPokemonPool(generation))))}
+function createGenerationPokemonPrize(generation){
+  const p=normalizePokemonPrize(randomItem(generationPokemonPool(generation)));
+  return applyRegionalForm({...p,label:`${p.pokemon} · ${p.category}`,rewardLabel:`${p.pokemon} — ${p.category} (${p.difficulty})`});
+}
 function paidSpinPricing(){const generation=selectedPaidGeneration();return generation?{one:500,ten:4500,generation}:{one:100,ten:900,generation:null}}
 function updatePaidSpinControls(){
   const pricing=paidSpinPricing();
@@ -2137,11 +2140,22 @@ $('#spinPaidTenButton').onclick=async()=>{
   const pricing=paidSpinPricing();
   if(!state.account||state.account.credits<pricing.ten){alert(`Necesitas ${pricing.ten} créditos.`);return}
   $('#spinPaidTenButton').disabled=true;$('#spinPaidButton').disabled=true;$('#paidGenerationSelect').disabled=true;
-  await supabase.from('accounts').update({credits:state.account.credits-pricing.ten}).eq('id',state.account.id);
-  const rewards=Array.from({length:10},()=>createPaidPokemonPrize());
-  await supabase.from('rewards').insert(rewards.map(prize=>({account_id:state.account.id,source:'Ruleta Pokémon x10',label:prize.rewardLabel})));
-  $('#paidResult').innerHTML='<strong>10 resultados:</strong><br>'+rewards.map((prize,index)=>`${index+1}. ${esc(prize.rewardLabel)}`).join('<br>');
-  pendingPaidReward=null;$('#acceptPaidReward').hidden=true;$('#spinPaidTenButton').disabled=false;$('#spinPaidButton').disabled=false;$('#paidGenerationSelect').disabled=false;await loadAll();
+  try{
+    const rewards=Array.from({length:10},()=>createPaidPokemonPrize());
+    const {error:creditError}=await supabase.from('accounts').update({credits:state.account.credits-pricing.ten}).eq('id',state.account.id);
+    if(creditError)throw creditError;
+    const rows=rewards.map(prize=>({account_id:state.account.id,source:'Ruleta Pokémon x10',label:prize.rewardLabel||prize.label||`${prize.pokemon} — ${prize.category}`}));
+    const {error:rewardError}=await supabase.from('rewards').insert(rows);
+    if(rewardError)throw rewardError;
+    $('#paidResult').innerHTML='<strong>10 resultados:</strong><br>'+rewards.map((prize,index)=>`${index+1}. ${esc(prize.rewardLabel||prize.label||`${prize.pokemon} — ${prize.category}`)}`).join('<br>');
+    pendingPaidReward=null;$('#acceptPaidReward').hidden=true;
+    await loadAll();
+  }catch(error){
+    console.error(error);
+    $('#paidResult').textContent='No se pudieron guardar los 10 resultados.';
+  }finally{
+    $('#spinPaidTenButton').disabled=false;$('#spinPaidButton').disabled=false;$('#paidGenerationSelect').disabled=false;
+  }
 };
 $('#acceptPaidReward').onclick=async()=>{
   if(!pendingPaidReward||!state.account)return;

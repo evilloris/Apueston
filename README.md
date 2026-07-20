@@ -102,3 +102,13 @@ Los Pokémon indicados pueden obtener forma normal, de Alola, de Galar o de Hisu
 ## v47 · Buscador de Pokémon
 
 Se agregó debajo de la Ruleta Pokémon un buscador por nombre o código Pokédex que muestra la generación correspondiente. No requiere SQL nuevo.
+
+
+## v49 · Gestión múltiple de recompensas
+
+- Se eliminó la confirmación emergente al descartar.
+- Cada recompensa disponible tiene una casilla de selección.
+- Las recompensas seleccionadas pueden reclamarse o descartarse en grupo.
+- “Mis recompensas” ahora tiene las pestañas “Recompensas” y “Pendientes”.
+- “Recompensas” muestra solo las disponibles; “Pendientes” muestra las ya reclamadas y aún no entregadas.
+- No requiere SQL nuevo.

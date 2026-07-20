@@ -11,7 +11,7 @@ const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;',
 const money = n => new Intl.NumberFormat("es-BO").format(Number(n || 0));
 
 let state = {
-  admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[], cashierTransactions:[], cashierAdditionRequests:[], announcements:[], announcementReplies:[], polls:[], pollOptions:[], pollVotes:[], numberGameSettings:null, numberGameSessions:[], numberGameRounds:[], numberGameBusy:false, numberGameSelectedMargin:5, numberGameTab:"games", mineGameSettings:null, mineGameSession:null, mineGameBusy:false, mineGameLastResult:null, cashierTab:"cash"
+  admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[], cashierTransactions:[], cashierAdditionRequests:[], announcements:[], announcementReplies:[], polls:[], pollOptions:[], pollVotes:[], numberGameSettings:null, numberGameSessions:[], numberGameRounds:[], numberGameBusy:false, numberGameSelectedMargin:5, numberGameTab:"games", mineGameSettings:null, mineGameSession:null, mineGameBusy:false, mineGameLastResult:null, cashierTab:"cash", rewardTab:"available", selectedRewardIds:new Set()
 };
 let editingAnnouncementId = null;
 let pendingPaidReward = null;
@@ -2163,14 +2163,82 @@ $('#acceptPaidReward').onclick=async()=>{
   pendingPaidReward=null;$('#acceptPaidReward').hidden=true;$('#paidResult').textContent='Recompensa añadida.';await loadAll();
 };
 function renderRewards(){
-  const mine=state.account?state.rewards.filter(r=>r.account_id===state.account.id&&r.status!=="claimed"):[];
-  $("#myRewards").innerHTML=mine.map(r=>`<div class="card"><strong>${esc(r.label)}</strong><div class="muted">${esc(r.source)} · ${esc(r.status)}</div><div class="reward-actions">${r.status==="available"?`<button data-request-reward="${r.id}">Reclamar</button>`:""}<button class="danger" data-discard-reward="${r.id}">Descartar</button></div></div>`).join("")||'<div class="muted">No hay recompensas.</div>';
-  $$("[data-request-reward]").forEach(b=>b.onclick=async()=>{await supabase.from("rewards").update({status:"requested",requested_at:new Date().toISOString()}).eq("id",b.dataset.requestReward);loadAll()});
-  $$("[data-discard-reward]").forEach(b=>b.onclick=async()=>{
-    if(!confirm("¿Descartar esta recompensa? Esta acción no se puede deshacer."))return;
-    await supabase.from("rewards").delete().eq("id",b.dataset.discardReward);
-    loadAll();
+  const mine=state.account?state.rewards.filter(r=>r.account_id===state.account.id):[];
+  const available=mine.filter(r=>r.status==="available");
+  const pending=mine.filter(r=>r.status==="requested");
+  const current=state.rewardTab==="requested"?pending:available;
+
+  state.selectedRewardIds=new Set([...state.selectedRewardIds].filter(id=>available.some(r=>r.id===id)));
+
+  $$("[data-reward-tab]").forEach(button=>{
+    const active=button.dataset.rewardTab===state.rewardTab;
+    button.classList.toggle("active",active);
+    button.setAttribute("aria-selected",active?"true":"false");
+    button.onclick=()=>{
+      state.rewardTab=button.dataset.rewardTab;
+      state.selectedRewardIds.clear();
+      renderRewards();
+    };
   });
+
+  const bulkActions=$("#rewardBulkActions");
+  if(bulkActions)bulkActions.hidden=state.rewardTab!=="available";
+
+  if(state.rewardTab==="available"){
+    $("#myRewards").innerHTML=current.map(r=>`<div class="card reward-card"><div class="reward-card-main"><div><strong>${esc(r.label)}</strong><div class="muted">${esc(r.source)}</div></div><label class="reward-check" title="Seleccionar recompensa"><input type="checkbox" data-select-reward="${r.id}" ${state.selectedRewardIds.has(r.id)?"checked":""}><span></span></label></div></div>`).join("")||'<div class="muted">No tienes recompensas sin reclamar.</div>';
+  }else{
+    $("#myRewards").innerHTML=current.map(r=>`<div class="card reward-card pending-reward"><strong>${esc(r.label)}</strong><div class="muted">${esc(r.source)} · Pendiente de entrega</div></div>`).join("")||'<div class="muted">No tienes recompensas pendientes.</div>';
+  }
+
+  const updateSelectionControls=()=>{
+    const visibleIds=available.map(r=>r.id);
+    const selectedCount=visibleIds.filter(id=>state.selectedRewardIds.has(id)).length;
+    const allSelected=visibleIds.length>0&&selectedCount===visibleIds.length;
+    const selectAll=$("#selectAllRewards");
+    if(selectAll){selectAll.checked=allSelected;selectAll.indeterminate=selectedCount>0&&!allSelected;selectAll.disabled=!visibleIds.length;}
+    if($("#selectedRewardsCount"))$("#selectedRewardsCount").textContent=`${selectedCount} seleccionada${selectedCount===1?"":"s"}`;
+    if($("#claimSelectedRewards"))$("#claimSelectedRewards").disabled=selectedCount===0;
+    if($("#discardSelectedRewards"))$("#discardSelectedRewards").disabled=selectedCount===0;
+  };
+
+  $$('[data-select-reward]').forEach(input=>input.onchange=()=>{
+    if(input.checked)state.selectedRewardIds.add(input.dataset.selectReward);
+    else state.selectedRewardIds.delete(input.dataset.selectReward);
+    updateSelectionControls();
+  });
+
+  const selectAll=$("#selectAllRewards");
+  if(selectAll)selectAll.onchange=()=>{
+    if(selectAll.checked)available.forEach(r=>state.selectedRewardIds.add(r.id));
+    else available.forEach(r=>state.selectedRewardIds.delete(r.id));
+    renderRewards();
+  };
+
+  const claimSelected=$("#claimSelectedRewards");
+  if(claimSelected)claimSelected.onclick=async()=>{
+    const ids=[...state.selectedRewardIds].filter(id=>available.some(r=>r.id===id));
+    if(!ids.length)return;
+    claimSelected.disabled=true;
+    const {error}=await supabase.from("rewards").update({status:"requested",requested_at:new Date().toISOString()}).in("id",ids).eq("account_id",state.account.id).eq("status","available");
+    if(error){console.error(error);claimSelected.disabled=false;return;}
+    state.selectedRewardIds.clear();
+    state.rewardTab="requested";
+    await loadAll();
+  };
+
+  const discardSelected=$("#discardSelectedRewards");
+  if(discardSelected)discardSelected.onclick=async()=>{
+    const ids=[...state.selectedRewardIds].filter(id=>available.some(r=>r.id===id));
+    if(!ids.length)return;
+    discardSelected.disabled=true;
+    const {error}=await supabase.from("rewards").delete().in("id",ids).eq("account_id",state.account.id).eq("status","available");
+    if(error){console.error(error);discardSelected.disabled=false;return;}
+    state.selectedRewardIds.clear();
+    await loadAll();
+  };
+
+  updateSelectionControls();
+
   const requested=state.rewards.filter(r=>r.status==="requested");
   const filter=$("#deliveryAccountFilter");
   const previousFilter=filter?.value||"all";
@@ -2195,7 +2263,7 @@ function renderRewards(){
       const a=state.accounts.find(x=>x.id===r.account_id);
       return`<div class="card"><strong>${esc(a?.username||"Cuenta")}</strong><div>${esc(r.label)}</div><button data-deliver="${r.id}">Confirmar entrega</button></div>`;
     }).join("")||'<div class="muted">Sin solicitudes para esta cuenta.</div>';
-    $$("[data-deliver]").forEach(b=>b.onclick=async()=>{
+    $$('[data-deliver]').forEach(b=>b.onclick=async()=>{
       await supabase.from("rewards").delete().eq("id",b.dataset.deliver);
       loadAll();
     });

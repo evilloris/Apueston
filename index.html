@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#090d14">
   <title>Liga Pokémon · Poképachanga</title>
-  <link rel="stylesheet" href="./styles.css?v=47">
+  <link rel="stylesheet" href="./styles.css?v=49">
 </head>
 <body>
 <header>
@@ -22,6 +22,18 @@
 <button class="drawer-button left" id="rewardDrawerButton" title="Mis recompensas">🎁</button>
 <aside class="drawer left" id="rewardDrawer">
   <h2>Mis recompensas</h2>
+  <div class="reward-tabs" role="tablist" aria-label="Mis recompensas">
+    <button type="button" class="reward-tab active" data-reward-tab="available">Recompensas</button>
+    <button type="button" class="reward-tab" data-reward-tab="requested">Pendientes</button>
+  </div>
+  <div id="rewardBulkActions" class="reward-bulk-actions">
+    <label class="reward-select-all"><input type="checkbox" id="selectAllRewards"> Seleccionar todas</label>
+    <div class="reward-bulk-buttons">
+      <button type="button" id="claimSelectedRewards">Reclamar seleccionadas</button>
+      <button type="button" id="discardSelectedRewards" class="danger">Descartar seleccionadas</button>
+    </div>
+    <div id="selectedRewardsCount" class="muted">0 seleccionadas</div>
+  </div>
   <div id="myRewards"></div>
 </aside>
 

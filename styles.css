@@ -309,3 +309,17 @@ body.admin .minigame-subtabs:not([hidden]){display:flex !important}
 .pokemon-search-result{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card)}
 .pokemon-search-result span{white-space:nowrap;color:var(--muted)}
 @media(max-width:600px){.pokemon-search-result{align-items:flex-start;flex-direction:column;gap:4px}.pokemon-search-result span{white-space:normal}}
+
+/* v49 · gestión múltiple de recompensas */
+.reward-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 12px}
+.reward-tab{background:#141b27;border:1px solid #2b3749;color:#b9c5d6}
+.reward-tab.active{background:#29486f;color:#fff;border-color:#5e91cf}
+.reward-bulk-actions{padding:10px;margin-bottom:12px;border:1px solid #273346;border-radius:12px;background:#0d131d}
+.reward-select-all{display:flex;align-items:center;gap:8px;margin-bottom:9px;cursor:pointer}
+.reward-select-all input{width:18px;height:18px}
+.reward-bulk-buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:7px}
+.reward-card-main{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.reward-check{display:grid;place-items:center;min-width:34px;min-height:34px;cursor:pointer}
+.reward-check input{width:22px;height:22px;cursor:pointer;accent-color:#66a8ff}
+.pending-reward{border-left:4px solid #e7b84e}
+@media(max-width:480px){.reward-bulk-buttons{grid-template-columns:1fr}.reward-card-main{align-items:flex-start}}

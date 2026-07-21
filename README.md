@@ -128,3 +128,9 @@ Se agregó debajo de la Ruleta Pokémon un buscador por nombre o código Pokéde
 - En Entrega de recompensas, el administrador tiene un botón C para copiar `/pokegiveother usuario pokemon lvl=20`.
 - Se agregaron las equivalencias entre usuarios de la página y nombres de Minecraft indicadas por el organizador.
 - No requiere ejecutar SQL nuevo.
+
+## v52 — comando agrupado de entrega
+- Se eliminó el botón de copiado individual de cada recompensa.
+- Al filtrar una cuenta específica en **Entrega de recompensas**, aparece un único botón para copiar todos sus Pokémon pendientes.
+- Formato: `/reward jugador Pokemon 20,Pokemon 20,...`.
+- Se conservan las equivalencias entre el usuario de la página y su nombre de Minecraft.

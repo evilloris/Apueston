@@ -2333,29 +2333,46 @@ function renderRewards(){
     const visibleRequested=selectedAccount==="all"
       ? requested
       : requested.filter(r=>r.account_id===selectedAccount);
+    const commandActions=$("#deliveryCommandActions");
+    const copyPlayerRewards=$("#copySelectedPlayerRewards");
+    const commandSummary=$("#deliveryCommandSummary");
+    const selectedAccountData=selectedAccount==="all"?null:state.accounts.find(a=>a.id===selectedAccount);
+    const pokemonNames=visibleRequested.map(r=>pokemonNameFromRewardLabel(r.label)).filter(Boolean);
+    const groupedCommand=selectedAccountData&&pokemonNames.length
+      ?`/reward ${minecraftUsernameForAccount(selectedAccountData.username)} ${pokemonNames.map(name=>`${name} 20`).join(",")}`
+      :"";
+
+    if(commandActions)commandActions.hidden=!groupedCommand;
+    if(commandSummary)commandSummary.textContent=groupedCommand
+      ?`${pokemonNames.length} Pokémon pendiente${pokemonNames.length===1?"":"s"} para ${selectedAccountData.username}`
+      :"";
+    if(copyPlayerRewards){
+      copyPlayerRewards.disabled=!groupedCommand;
+      copyPlayerRewards.textContent="C · Copiar comando";
+      copyPlayerRewards.classList.remove("copied");
+      copyPlayerRewards.onclick=groupedCommand?async()=>{
+        try{
+          await copyTextToClipboard(groupedCommand);
+          copyPlayerRewards.textContent="✓ Comando copiado";
+          copyPlayerRewards.classList.add("copied");
+          setTimeout(()=>{
+            copyPlayerRewards.textContent="C · Copiar comando";
+            copyPlayerRewards.classList.remove("copied");
+          },1400);
+        }catch(error){
+          console.error(error);
+          copyPlayerRewards.title=groupedCommand;
+        }
+      }:null;
+    }
+
     $("#deliveryList").innerHTML=visibleRequested.map(r=>{
       const a=state.accounts.find(x=>x.id===r.account_id);
-      return`<div class="card"><strong>${esc(a?.username||"Cuenta")}</strong><div>${esc(r.label)}</div><div class="delivery-card-actions"><button data-deliver="${r.id}">Confirmar entrega</button><button type="button" class="secondary copy-pokegive-button" data-copy-pokegive="${r.id}" title="Copiar comando /pokegiveother">C</button></div></div>`;
+      return`<div class="card"><strong>${esc(a?.username||"Cuenta")}</strong><div>${esc(r.label)}</div><div class="delivery-card-actions"><button data-deliver="${r.id}">Confirmar entrega</button></div></div>`;
     }).join("")||'<div class="muted">Sin solicitudes para esta cuenta.</div>';
     $$('[data-deliver]').forEach(b=>b.onclick=async()=>{
       await supabase.from("rewards").delete().eq("id",b.dataset.deliver);
       loadAll();
-    });
-    $$('[data-copy-pokegive]').forEach(button=>button.onclick=async()=>{
-      const reward=requested.find(r=>r.id===button.dataset.copyPokegive);
-      const account=reward?state.accounts.find(a=>a.id===reward.account_id):null;
-      if(!reward||!account)return;
-      const minecraftUser=minecraftUsernameForAccount(account.username);
-      const pokemon=pokemonNameFromRewardLabel(reward.label);
-      const command=`/pokegiveother ${minecraftUser} ${pokemon} lvl=20`;
-      try{
-        await copyTextToClipboard(command);
-        button.textContent="✓";button.classList.add("copied");
-        setTimeout(()=>{button.textContent="C";button.classList.remove("copied")},1200);
-      }catch(error){
-        console.error(error);
-        button.title=command;
-      }
     });
   };
 

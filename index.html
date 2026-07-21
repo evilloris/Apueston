@@ -45,6 +45,9 @@
     <option value="all">Todas las cuentas</option>
   </select>
   <div id="deliveryCommandActions" class="delivery-command-actions" hidden>
+    <label class="delivery-level-label" for="deliveryRewardLevel">Nivel general
+      <input type="number" id="deliveryRewardLevel" min="1" max="100" step="1" value="20">
+    </label>
     <button type="button" id="copySelectedPlayerRewards" title="Copiar comando /reward">C · Copiar comando</button>
     <div id="deliveryCommandSummary" class="muted"></div>
   </div>
@@ -426,6 +429,6 @@
   </div>
 </div>
 
-<script type="module" src="./app.js?v=52"></script>
+<script type="module" src="./app.js?v=53"></script>
 </body>
 </html>

@@ -2224,6 +2224,19 @@ function pokemonNameFromRewardLabel(label){
   name=name.replace(/^\d{1,4}\s*[-–—]\s*/,"").trim();
   return name;
 }
+function pokemonRegionFromRewardLabel(label){
+  const text=String(label||"").toLowerCase();
+  if(text.includes("forma de alola"))return "alola";
+  if(text.includes("forma de galar"))return "galar";
+  if(text.includes("forma de hisui"))return "hisui";
+  return "";
+}
+function rewardPokemonCommandPart(reward,level){
+  const name=pokemonNameFromRewardLabel(reward?.label);
+  if(!name)return "";
+  const region=pokemonRegionFromRewardLabel(reward?.label);
+  return `${name} ${level}${region?` ${region}`:""}`;
+}
 async function copyTextToClipboard(text){
   if(navigator.clipboard?.writeText){
     await navigator.clipboard.writeText(text);
@@ -2337,15 +2350,34 @@ function renderRewards(){
     const copyPlayerRewards=$("#copySelectedPlayerRewards");
     const commandSummary=$("#deliveryCommandSummary");
     const selectedAccountData=selectedAccount==="all"?null:state.accounts.find(a=>a.id===selectedAccount);
-    const pokemonNames=visibleRequested.map(r=>pokemonNameFromRewardLabel(r.label)).filter(Boolean);
-    const groupedCommand=selectedAccountData&&pokemonNames.length
-      ?`/reward ${minecraftUsernameForAccount(selectedAccountData.username)} ${pokemonNames.map(name=>`${name} 20`).join(",")}`
+    const levelInput=$("#deliveryRewardLevel");
+    const savedLevel=Number(localStorage.getItem("delivery_reward_level")||20);
+    if(levelInput&&!levelInput.dataset.initialized){
+      levelInput.value=String(Number.isInteger(savedLevel)&&savedLevel>=1&&savedLevel<=100?savedLevel:20);
+      levelInput.dataset.initialized="true";
+    }
+    const level=Math.min(100,Math.max(1,parseInt(levelInput?.value||"20",10)||20));
+    const pokemonParts=visibleRequested.map(r=>rewardPokemonCommandPart(r,level)).filter(Boolean);
+    const groupedCommand=selectedAccountData&&pokemonParts.length
+      ?`/reward ${minecraftUsernameForAccount(selectedAccountData.username)} ${pokemonParts.join(",")}`
       :"";
 
     if(commandActions)commandActions.hidden=!groupedCommand;
     if(commandSummary)commandSummary.textContent=groupedCommand
-      ?`${pokemonNames.length} Pokémon pendiente${pokemonNames.length===1?"":"s"} para ${selectedAccountData.username}`
+      ?`${pokemonParts.length} Pokémon pendiente${pokemonParts.length===1?"":"s"} para ${selectedAccountData.username} · Nivel ${level}`
       :"";
+    if(levelInput){
+      levelInput.onchange=()=>{
+        const normalized=Math.min(100,Math.max(1,parseInt(levelInput.value||"20",10)||20));
+        levelInput.value=String(normalized);
+        localStorage.setItem("delivery_reward_level",String(normalized));
+        renderDeliveryRequests();
+      };
+      levelInput.oninput=()=>{
+        const raw=parseInt(levelInput.value,10);
+        if(Number.isInteger(raw)&&raw>=1&&raw<=100)localStorage.setItem("delivery_reward_level",String(raw));
+      };
+    }
     if(copyPlayerRewards){
       copyPlayerRewards.disabled=!groupedCommand;
       copyPlayerRewards.textContent="C · Copiar comando";

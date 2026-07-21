@@ -338,3 +338,6 @@ body.admin .minigame-subtabs:not([hidden]){display:flex !important}
 .delivery-command-actions{margin:0 0 12px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--panel2)}
 .delivery-command-actions button{width:100%;margin-bottom:6px}
 .delivery-command-actions .muted{font-size:.82rem;overflow-wrap:anywhere}
+
+.delivery-level-label{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;font-weight:700}
+.delivery-level-label input{width:88px;margin:0;text-align:center}

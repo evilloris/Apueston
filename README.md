@@ -134,3 +134,11 @@ Se agregó debajo de la Ruleta Pokémon un buscador por nombre o código Pokéde
 - Al filtrar una cuenta específica en **Entrega de recompensas**, aparece un único botón para copiar todos sus Pokémon pendientes.
 - Formato: `/reward jugador Pokemon 20,Pokemon 20,...`.
 - Se conservan las equivalencias entre el usuario de la página y su nombre de Minecraft.
+
+
+## v53 — nivel general y formas regionales en `/reward`
+- En **Entrega de recompensas** se agregó un nivel general editable entre 1 y 100.
+- El nivel elegido se usa para todos los Pokémon del comando y queda recordado en el navegador.
+- Las formas regionales agregan la región después del nivel: `Goodra 35 hisui`, `Vulpix 35 alola` o `Articuno 35 galar`.
+- Los Pokémon normales mantienen el formato `Pokemon nivel`.
+- No requiere ejecutar SQL nuevo.

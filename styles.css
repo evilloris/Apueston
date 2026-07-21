@@ -323,3 +323,13 @@ body.admin .minigame-subtabs:not([hidden]){display:flex !important}
 .reward-check input{width:22px;height:22px;cursor:pointer;accent-color:#66a8ff}
 .pending-reward{border-left:4px solid #e7b84e}
 @media(max-width:480px){.reward-bulk-buttons{grid-template-columns:1fr}.reward-card-main{align-items:flex-start}}
+
+
+/* v51: notificaciones de Inicio y copiado de comandos de entrega */
+.home-nav-button{position:relative}
+.nav-notification-badge{display:inline-flex;align-items:center;justify-content:center;min-width:21px;height:21px;padding:0 6px;margin-left:4px;border-radius:999px;background:#e52535;color:#fff;font-size:12px;font-weight:900;line-height:1;box-shadow:0 0 0 2px rgba(229,37,53,.18)}
+.nav-notification-badge[hidden]{display:none!important}
+.delivery-card-actions{display:flex;gap:8px;align-items:center;margin-top:10px}
+.delivery-card-actions button{margin-top:0}
+.copy-pokegive-button{width:38px;min-width:38px;padding:8px 0;font-weight:1000}
+.copy-pokegive-button.copied{background:#2cab64;border-color:#2cab64;color:#fff}

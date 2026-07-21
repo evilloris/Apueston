@@ -120,7 +120,7 @@ function renderAll(){
   $("#sessionLabel").textContent=state.account?state.account.username:"Sin sesión";
   $("#walletLabel").textContent=state.account?`💰 ${money(state.account.credits)}`:"💰 —";
   $("#loginButton").hidden=!!state.account; $("#logoutButton").hidden=!state.account;
-  renderLeaderboard(); renderCommunityFeed(); renderActiveEvents(); renderTournamentSelects(); renderBetMatches(); renderBetTournamentStandings(); renderBetStandings();
+  renderLeaderboard(); renderCommunityFeed(); renderCommunityNotificationBadge(); if($("#view-home")?.classList.contains("active"))markCommunityNotificationsSeen(); renderActiveEvents(); renderTournamentSelects(); renderBetMatches(); renderBetTournamentStandings(); renderBetStandings();
   renderMyBets(); renderGeneralStats(); renderResults(); renderAccountsAdmin();
   renderCreditsAdmin(); renderTournamentsAdmin(); renderIndividualEventsAdmin(); renderRewards(); // ============================================================
 // v27 · Minijuego Adivina el número
@@ -371,6 +371,44 @@ if($('#pokemonGenerationSearch'))$('#pokemonGenerationSearch').oninput=renderPok
 
 renderWeeklyDailyPrizes(); updateDailyButton(); renderNumberGame(); renderMineGame();
 }
+function communityNotificationOwner(){
+  return state.account?.id||"guest";
+}
+function communityNotificationKey(){
+  return `liga_community_seen_${communityNotificationOwner()}`;
+}
+function latestCommunityTimestamp(){
+  return [...state.announcements,...state.polls].reduce((latest,item)=>{
+    const value=Date.parse(item.created_at||0)||0;
+    return Math.max(latest,value);
+  },0);
+}
+function communityUnreadCount(){
+  const items=[...state.announcements,...state.polls];
+  if(!items.length)return 0;
+  const key=communityNotificationKey();
+  const stored=localStorage.getItem(key);
+  const latest=latestCommunityTimestamp();
+  if(stored===null){
+    localStorage.setItem(key,String(latest));
+    return 0;
+  }
+  const seen=Number(stored)||0;
+  return items.filter(item=>(Date.parse(item.created_at||0)||0)>seen).length;
+}
+function renderCommunityNotificationBadge(){
+  const badge=$("#homeNotificationBadge");
+  if(!badge)return;
+  const count=communityUnreadCount();
+  badge.textContent=count>99?"99+":String(count);
+  badge.hidden=count===0;
+  badge.setAttribute("aria-label",`${count} notificación${count===1?"":"es"} nueva${count===1?"":"s"}`);
+}
+function markCommunityNotificationsSeen(){
+  localStorage.setItem(communityNotificationKey(),String(latestCommunityTimestamp()));
+  renderCommunityNotificationBadge();
+}
+
 function switchView(view){
   const target=$(`#view-${view}`);
   if(!target || (target.classList.contains("admin-only")&&!state.admin) || (target.classList.contains("cashier-access")&&!(state.admin||state.account?.is_cashier))) view="home";
@@ -385,6 +423,7 @@ function switchView(view){
     button.classList.toggle("active",isActive);
     button.setAttribute("aria-current",isActive?"page":"false");
   });
+  if(view==="home")markCommunityNotificationsSeen();
   window.scrollTo({top:0,behavior:"smooth"});
 }
 $("#nav").addEventListener("click",e=>{const b=e.target.closest("[data-view]");if(b)switchView(b.dataset.view)});
@@ -2167,6 +2206,36 @@ $('#acceptPaidReward').onclick=async()=>{
   await supabase.from('rewards').insert({account_id:state.account.id,source:'Ruleta Pokémon',label:pendingPaidReward.rewardLabel||pendingPaidReward.label});
   pendingPaidReward=null;$('#acceptPaidReward').hidden=true;$('#paidResult').textContent='Recompensa añadida.';await loadAll();
 };
+const DELIVERY_MINECRAFT_USERS={
+  davi:"davicowww",
+  erickcld:"ErickCST",
+  lix:"LixitoRoa",
+  olise:"OLISE",
+  tycrays:"Tycrays",
+  volterwf:"Volterwf",
+  japi:"xJAPlx",
+  zapi:"Z4P131"
+};
+function minecraftUsernameForAccount(username){
+  return DELIVERY_MINECRAFT_USERS[String(username||"").trim().toLowerCase()]||String(username||"").trim();
+}
+function pokemonNameFromRewardLabel(label){
+  let name=String(label||"").split(/\s+—\s+/)[0].trim();
+  name=name.replace(/^\d{1,4}\s*[-–—]\s*/,"").trim();
+  return name;
+}
+async function copyTextToClipboard(text){
+  if(navigator.clipboard?.writeText){
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const area=document.createElement("textarea");
+  area.value=text;area.style.position="fixed";area.style.opacity="0";
+  document.body.appendChild(area);area.select();
+  const ok=document.execCommand("copy");area.remove();
+  if(!ok)throw new Error("No se pudo copiar");
+}
+
 function renderRewards(){
   const mine=state.account?state.rewards.filter(r=>r.account_id===state.account.id):[];
   const available=mine.filter(r=>r.status==="available");
@@ -2266,11 +2335,27 @@ function renderRewards(){
       : requested.filter(r=>r.account_id===selectedAccount);
     $("#deliveryList").innerHTML=visibleRequested.map(r=>{
       const a=state.accounts.find(x=>x.id===r.account_id);
-      return`<div class="card"><strong>${esc(a?.username||"Cuenta")}</strong><div>${esc(r.label)}</div><button data-deliver="${r.id}">Confirmar entrega</button></div>`;
+      return`<div class="card"><strong>${esc(a?.username||"Cuenta")}</strong><div>${esc(r.label)}</div><div class="delivery-card-actions"><button data-deliver="${r.id}">Confirmar entrega</button><button type="button" class="secondary copy-pokegive-button" data-copy-pokegive="${r.id}" title="Copiar comando /pokegiveother">C</button></div></div>`;
     }).join("")||'<div class="muted">Sin solicitudes para esta cuenta.</div>';
     $$('[data-deliver]').forEach(b=>b.onclick=async()=>{
       await supabase.from("rewards").delete().eq("id",b.dataset.deliver);
       loadAll();
+    });
+    $$('[data-copy-pokegive]').forEach(button=>button.onclick=async()=>{
+      const reward=requested.find(r=>r.id===button.dataset.copyPokegive);
+      const account=reward?state.accounts.find(a=>a.id===reward.account_id):null;
+      if(!reward||!account)return;
+      const minecraftUser=minecraftUsernameForAccount(account.username);
+      const pokemon=pokemonNameFromRewardLabel(reward.label);
+      const command=`/pokegiveother ${minecraftUser} ${pokemon} lvl=20`;
+      try{
+        await copyTextToClipboard(command);
+        button.textContent="✓";button.classList.add("copied");
+        setTimeout(()=>{button.textContent="C";button.classList.remove("copied")},1200);
+      }catch(error){
+        console.error(error);
+        button.title=command;
+      }
     });
   };
 

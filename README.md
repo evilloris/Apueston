@@ -121,3 +121,10 @@ Se agregó debajo de la Ruleta Pokémon un buscador por nombre o código Pokéde
 - Las casillas aparecen a la derecha de cada recompensa disponible.
 - “Seleccionar todas” selecciona correctamente las recompensas visibles y actualiza el contador.
 - No requiere cambios SQL.
+
+
+## Cambios v51
+- El botón Inicio muestra un contador rojo de comunicados y encuestas nuevos. Se marca como leído al abrir Inicio y se guarda por cuenta en el navegador.
+- En Entrega de recompensas, el administrador tiene un botón C para copiar `/pokegiveother usuario pokemon lvl=20`.
+- Se agregaron las equivalencias entre usuarios de la página y nombres de Minecraft indicadas por el organizador.
+- No requiere ejecutar SQL nuevo.

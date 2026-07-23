@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#090d14">
   <title>Liga Pokémon · Poképachanga</title>
-  <link rel="stylesheet" href="./styles.css?v=51">
+  <link rel="stylesheet" href="./styles.css?v=54">
 </head>
 <body>
 <header>
@@ -48,7 +48,11 @@
     <label class="delivery-level-label" for="deliveryRewardLevel">Nivel general
       <input type="number" id="deliveryRewardLevel" min="1" max="100" step="1" value="20">
     </label>
-    <button type="button" id="copySelectedPlayerRewards" title="Copiar comando /reward">C · Copiar comando</button>
+    <div class="delivery-batch-actions">
+      <button type="button" id="selectFifteenRewards">Seleccionar 15</button>
+      <button type="button" id="copySelectedPlayerRewards" title="Copiar comando /reward">C · Copiar seleccionados</button>
+      <button type="button" id="deliverSelectedRewards" disabled>✓ Marcar seleccionados como entregados</button>
+    </div>
     <div id="deliveryCommandSummary" class="muted"></div>
   </div>
   <div id="deliveryList"></div>
@@ -429,6 +433,6 @@
   </div>
 </div>
 
-<script type="module" src="./app.js?v=53"></script>
+<script type="module" src="./app.js?v=54"></script>
 </body>
 </html>

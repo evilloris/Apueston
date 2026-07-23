@@ -11,7 +11,7 @@ const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;',
 const money = n => new Intl.NumberFormat("es-BO").format(Number(n || 0));
 
 let state = {
-  admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[], cashierTransactions:[], cashierAdditionRequests:[], announcements:[], announcementReplies:[], polls:[], pollOptions:[], pollVotes:[], numberGameSettings:null, numberGameSessions:[], numberGameRounds:[], numberGameBusy:false, numberGameSelectedMargin:5, numberGameTab:"games", mineGameSettings:null, mineGameSession:null, mineGameBusy:false, mineGameLastResult:null, cashierTab:"cash", rewardTab:"available", selectedRewardIds:new Set()
+  admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[], cashierTransactions:[], cashierAdditionRequests:[], announcements:[], announcementReplies:[], polls:[], pollOptions:[], pollVotes:[], numberGameSettings:null, numberGameSessions:[], numberGameRounds:[], numberGameBusy:false, numberGameSelectedMargin:5, numberGameTab:"games", mineGameSettings:null, mineGameSession:null, mineGameBusy:false, mineGameLastResult:null, cashierTab:"cash", rewardTab:"available", selectedRewardIds:new Set(), deliverySelectedRewardIds:new Set(), deliveryCopiedRewardIds:new Set()
 };
 let editingAnnouncementId = null;
 let pendingPaidReward = null;
@@ -2235,7 +2235,7 @@ function rewardPokemonCommandPart(reward,level){
   const name=pokemonNameFromRewardLabel(reward?.label);
   if(!name)return "";
   const region=pokemonRegionFromRewardLabel(reward?.label);
-  return `${name} ${level}${region?` ${region}`:""}`;
+  return `${name}${region?` ${region}`:""} ${level}`;
 }
 async function copyTextToClipboard(text){
   if(navigator.clipboard?.writeText){
@@ -2348,29 +2348,46 @@ function renderRewards(){
       : requested.filter(r=>r.account_id===selectedAccount);
     const commandActions=$("#deliveryCommandActions");
     const copyPlayerRewards=$("#copySelectedPlayerRewards");
+    const selectFifteen=$("#selectFifteenRewards");
+    const deliverSelected=$("#deliverSelectedRewards");
     const commandSummary=$("#deliveryCommandSummary");
     const selectedAccountData=selectedAccount==="all"?null:state.accounts.find(a=>a.id===selectedAccount);
     const levelInput=$("#deliveryRewardLevel");
+    const visibleIds=new Set(visibleRequested.map(r=>String(r.id)));
+
+    state.deliverySelectedRewardIds=new Set(
+      [...state.deliverySelectedRewardIds].filter(id=>visibleIds.has(String(id)))
+    );
+    state.deliveryCopiedRewardIds=new Set(
+      [...state.deliveryCopiedRewardIds].filter(id=>visibleIds.has(String(id)))
+    );
+
     const savedLevel=Number(localStorage.getItem("delivery_reward_level")||20);
     if(levelInput&&!levelInput.dataset.initialized){
       levelInput.value=String(Number.isInteger(savedLevel)&&savedLevel>=1&&savedLevel<=100?savedLevel:20);
       levelInput.dataset.initialized="true";
     }
     const level=Math.min(100,Math.max(1,parseInt(levelInput?.value||"20",10)||20));
-    const pokemonParts=visibleRequested.map(r=>rewardPokemonCommandPart(r,level)).filter(Boolean);
+    const selectedRewards=visibleRequested.filter(r=>state.deliverySelectedRewardIds.has(String(r.id)));
+    const pokemonParts=selectedRewards.map(r=>rewardPokemonCommandPart(r,level)).filter(Boolean);
     const groupedCommand=selectedAccountData&&pokemonParts.length
       ?`/reward ${minecraftUsernameForAccount(selectedAccountData.username)} ${pokemonParts.join(",")}`
       :"";
+    const copiedMatchesSelection=selectedRewards.length>0
+      && selectedRewards.length===state.deliveryCopiedRewardIds.size
+      && selectedRewards.every(r=>state.deliveryCopiedRewardIds.has(String(r.id)));
 
-    if(commandActions)commandActions.hidden=!groupedCommand;
-    if(commandSummary)commandSummary.textContent=groupedCommand
-      ?`${pokemonParts.length} Pokémon pendiente${pokemonParts.length===1?"":"s"} para ${selectedAccountData.username} · Nivel ${level}`
-      :"";
+    if(commandActions)commandActions.hidden=selectedAccount==="all";
+    if(commandSummary)commandSummary.textContent=selectedAccountData
+      ?`${selectedRewards.length} de ${visibleRequested.length} Pokémon seleccionados para ${selectedAccountData.username} · Nivel ${level}`
+      :"Selecciona una cuenta para preparar entregas.";
+
     if(levelInput){
       levelInput.onchange=()=>{
         const normalized=Math.min(100,Math.max(1,parseInt(levelInput.value||"20",10)||20));
         levelInput.value=String(normalized);
         localStorage.setItem("delivery_reward_level",String(normalized));
+        state.deliveryCopiedRewardIds.clear();
         renderDeliveryRequests();
       };
       levelInput.oninput=()=>{
@@ -2378,19 +2395,28 @@ function renderRewards(){
         if(Number.isInteger(raw)&&raw>=1&&raw<=100)localStorage.setItem("delivery_reward_level",String(raw));
       };
     }
+
+    if(selectFifteen){
+      selectFifteen.disabled=!selectedAccountData||!visibleRequested.length;
+      selectFifteen.onclick=()=>{
+        state.deliverySelectedRewardIds.clear();
+        visibleRequested.slice(0,15).forEach(r=>state.deliverySelectedRewardIds.add(String(r.id)));
+        state.deliveryCopiedRewardIds.clear();
+        renderDeliveryRequests();
+      };
+    }
+
     if(copyPlayerRewards){
       copyPlayerRewards.disabled=!groupedCommand;
-      copyPlayerRewards.textContent="C · Copiar comando";
+      copyPlayerRewards.textContent="C · Copiar seleccionados";
       copyPlayerRewards.classList.remove("copied");
       copyPlayerRewards.onclick=groupedCommand?async()=>{
         try{
           await copyTextToClipboard(groupedCommand);
+          state.deliveryCopiedRewardIds=new Set(selectedRewards.map(r=>String(r.id)));
           copyPlayerRewards.textContent="✓ Comando copiado";
           copyPlayerRewards.classList.add("copied");
-          setTimeout(()=>{
-            copyPlayerRewards.textContent="C · Copiar comando";
-            copyPlayerRewards.classList.remove("copied");
-          },1400);
+          renderDeliveryRequests();
         }catch(error){
           console.error(error);
           copyPlayerRewards.title=groupedCommand;
@@ -2398,13 +2424,32 @@ function renderRewards(){
       }:null;
     }
 
+    if(deliverSelected){
+      deliverSelected.disabled=!copiedMatchesSelection;
+      deliverSelected.onclick=copiedMatchesSelection?async()=>{
+        const ids=[...state.deliveryCopiedRewardIds];
+        if(!ids.length)return;
+        deliverSelected.disabled=true;
+        const {error}=await supabase.from("rewards").delete().in("id",ids).eq("status","requested");
+        if(error){console.error(error);deliverSelected.disabled=false;return;}
+        state.deliverySelectedRewardIds.clear();
+        state.deliveryCopiedRewardIds.clear();
+        await loadAll();
+      }:null;
+    }
+
     $("#deliveryList").innerHTML=visibleRequested.map(r=>{
       const a=state.accounts.find(x=>x.id===r.account_id);
-      return`<div class="card"><strong>${esc(a?.username||"Cuenta")}</strong><div>${esc(r.label)}</div><div class="delivery-card-actions"><button data-deliver="${r.id}">Confirmar entrega</button></div></div>`;
+      const checked=state.deliverySelectedRewardIds.has(String(r.id));
+      return`<div class="card delivery-reward-card"><div class="delivery-reward-row"><label class="reward-check" title="Seleccionar para entregar"><input type="checkbox" data-delivery-select="${r.id}" ${checked?"checked":""}><span></span></label><div><strong>${esc(a?.username||"Cuenta")}</strong><div>${esc(r.label)}</div></div></div></div>`;
     }).join("")||'<div class="muted">Sin solicitudes para esta cuenta.</div>';
-    $$('[data-deliver]').forEach(b=>b.onclick=async()=>{
-      await supabase.from("rewards").delete().eq("id",b.dataset.deliver);
-      loadAll();
+
+    $$('[data-delivery-select]').forEach(input=>input.onchange=()=>{
+      const id=String(input.dataset.deliverySelect);
+      if(input.checked)state.deliverySelectedRewardIds.add(id);
+      else state.deliverySelectedRewardIds.delete(id);
+      state.deliveryCopiedRewardIds.clear();
+      renderDeliveryRequests();
     });
   };
 

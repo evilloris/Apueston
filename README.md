@@ -142,3 +142,12 @@ Se agregó debajo de la Ruleta Pokémon un buscador por nombre o código Pokéde
 - Las formas regionales agregan la región después del nivel: `Goodra 35 hisui`, `Vulpix 35 alola` o `Articuno 35 galar`.
 - Los Pokémon normales mantienen el formato `Pokemon nivel`.
 - No requiere ejecutar SQL nuevo.
+
+
+## v54 · Entrega por lotes de 15
+- Las formas regionales usan el formato `Pokemon region nivel`, por ejemplo `Goodra hisui 35`.
+- La entrega de recompensas incluye checkbox por Pokémon.
+- El botón **Seleccionar 15** marca automáticamente hasta 15 recompensas pendientes del jugador elegido.
+- El botón **C** copia únicamente las recompensas seleccionadas.
+- Después de copiar, se habilita **Marcar seleccionados como entregados** para confirmar exactamente ese lote.
+- No requiere cambios SQL.

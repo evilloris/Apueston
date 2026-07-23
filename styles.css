@@ -341,3 +341,9 @@ body.admin .minigame-subtabs:not([hidden]){display:flex !important}
 
 .delivery-level-label{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;font-weight:700}
 .delivery-level-label input{width:88px;margin:0;text-align:center}
+
+/* v54 · entrega por lotes de 15 */
+.delivery-batch-actions{display:grid;gap:7px;margin:8px 0}
+.delivery-batch-actions button{margin:0}
+.delivery-reward-row{display:flex;align-items:flex-start;gap:10px}
+.delivery-reward-card{padding:10px}

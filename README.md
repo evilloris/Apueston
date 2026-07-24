@@ -151,3 +151,11 @@ Se agregó debajo de la Ruleta Pokémon un buscador por nombre o código Pokéde
 - El botón **C** copia únicamente las recompensas seleccionadas.
 - Después de copiar, se habilita **Marcar seleccionados como entregados** para confirmar exactamente ese lote.
 - No requiere cambios SQL.
+
+
+## v55 · Rematch de peleas
+- En la pantalla administrativa del torneo, las peleas finalizadas muestran un botón **Rematch**.
+- El rematch vuelve a dejar la misma pelea como programada, con marcador 0-0 y sin ganador.
+- Reembolsa las apuestas directas y las combinadas relacionadas con esa pelea; si una apuesta ganadora ya pagó, primero descuenta el premio y después devuelve la apuesta.
+- Revierte el ELO, victorias, derrotas y KO obtenidos en esa pelea. Las peleas finalizadas desde esta versión guardan una copia exacta del ranking anterior; para peleas antiguas la devolución del ELO es aproximada.
+- No requiere cambios SQL.

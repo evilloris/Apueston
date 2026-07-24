@@ -1541,6 +1541,7 @@ function renderMatchAdmin(){
   $$("[data-finish-match]").forEach(b=>b.onclick=()=>finishMatch(b.dataset.finishMatch,false));
   $$("[data-walkover-a]").forEach(b=>b.onclick=()=>finishMatch(b.dataset.walkoverA,true,"a"));
   $$("[data-walkover-b]").forEach(b=>b.onclick=()=>finishMatch(b.dataset.walkoverB,true,"b"));
+  $$("[data-rematch]").forEach(b=>b.onclick=()=>rematchMatch(b.dataset.rematch));
   $$(`[data-save-manual-odds]`).forEach(b=>b.onclick=()=>saveManualOdds(b.dataset.saveManualOdds));
   $$(`[data-auto-odds]`).forEach(b=>b.onclick=()=>useAutomaticOdds(b.dataset.autoOdds));
   $$("[data-save-schedule]").forEach(b=>b.onclick=()=>saveSchedule(b.dataset.saveSchedule));
@@ -1567,7 +1568,7 @@ function matchCardAdmin(m){
       <small class="muted">Actual: x${dynamicOdds(m).a} / x${dynamicOdds(m).b}</small>
     </div>
     <div class="fight-controls">
-      ${done?`<div class="card"><strong>Resultado: ${m.score_a??0} - ${m.score_b??0}</strong> · ${m.status==="walkover"?"Walkover":"Finalizada"}</div>`:
+      ${done?`<div class="card"><strong>Resultado: ${m.score_a??0} - ${m.score_b??0}</strong> · ${m.status==="walkover"?"Walkover":"Finalizada"}<div style="margin-top:10px"><button class="secondary" data-rematch="${m.id}">Rematch</button></div></div>`:
       started?`<div class="score-box">
         <input type="number" min="0" value="${m.score_a??0}" data-score-a="${m.id}">
         <span>—</span>
@@ -1712,6 +1713,68 @@ async function settleBets(matchId){
   renderMyBets();renderLeaderboard();
 }
 
+
+function rankingSnapshotForMatch(match){
+  const sideA=state.participants.find(p=>p.id===match.side_a),sideB=state.participants.find(p=>p.id===match.side_b);
+  const names=[...new Set([...participantMemberNames(sideA),...participantMemberNames(sideB)])];
+  return names.map(name=>{
+    const r=rankingFor(name);
+    return {name,elo:Number(r.elo||1000),wins:Number(r.wins||0),losses:Number(r.losses||0),kos_for:Number(r.kos_for||0),kos_against:Number(r.kos_against||0)};
+  });
+}
+async function refundBetsForRematch(matchId){
+  const affected=state.bets.filter(b=>b.match_id===matchId||(b.bet_type==='parlay'&&(b.selection?.legs||[]).some(l=>l.match_id===matchId)));
+  const accountChanges=new Map();
+  for(const bet of affected){
+    if(bet.status==='refunded')continue;
+    const account=state.accounts.find(a=>a.id===bet.account_id);if(!account)continue;
+    const adjustment=Number(bet.stake||0)-(bet.status==='won'?Number(bet.payout||0):0);
+    const next=Math.max(0,Number(account.credits||0)+adjustment);
+    account.credits=next;accountChanges.set(account.id,next);
+    const {error}=await supabase.from('bets').update({status:'refunded',payout:0}).eq('id',bet.id);
+    if(error)throw error;
+    bet.status='refunded';bet.payout=0;
+  }
+  for(const [id,credits] of accountChanges){const {error}=await supabase.from('accounts').update({credits}).eq('id',id);if(error)throw error}
+  return affected.length;
+}
+async function restoreRankingForRematch(match){
+  const snapshot=match.base_odds?.rematch_ranking_before;
+  if(Array.isArray(snapshot)&&snapshot.length){
+    const {error}=await supabase.from('rankings').upsert(snapshot,{onConflict:'name'});if(error)throw error;
+    for(const row of snapshot){const i=state.rankings.findIndex(r=>r.name.toLowerCase()===row.name.toLowerCase());if(i>=0)state.rankings[i]={...state.rankings[i],...row};else state.rankings.push(row)}
+    return true;
+  }
+  // Compatibilidad con peleas terminadas antes de esta versión: revierte victorias, derrotas y KO, y aproxima la devolución de ELO.
+  const sideA=state.participants.find(p=>p.id===match.side_a),sideB=state.participants.find(p=>p.id===match.side_b);
+  if(!sideA||!sideB)return false;
+  const namesA=participantMemberNames(sideA),namesB=participantMemberNames(sideB),winA=match.winner_id===match.side_a;
+  const tournament=state.tournaments.find(t=>t.id===match.tournament_id),isTeam=tournament?.format==='2v2'||namesA.length>1||namesB.length>1,isIndividual=!!(tournament?.config?.event_type==='individual'||tournament?.config?.individual);
+  const baseK=isTeam?14:24,multiplier=isIndividual?1:2;
+  const avgA=namesA.reduce((n,name)=>n+rankingFor(name).elo,0)/Math.max(1,namesA.length),avgB=namesB.reduce((n,name)=>n+rankingFor(name).elo,0)/Math.max(1,namesB.length);
+  const rows=[];
+  for(const [names,oppAvg,won,kf,ka] of [[namesA,avgB,winA,match.score_a,match.score_b],[namesB,avgA,!winA,match.score_b,match.score_a]])for(const name of names){
+    const current=rankingFor(name),exp=expected(current.elo,oppAvg),koImpact=clamp((Number(kf)-Number(ka))*0.9,-7,7),delta=Math.round(((baseK*(Number(won)-exp))+koImpact)*multiplier);
+    rows.push({name,elo:Math.max(100,Number(current.elo)-delta),wins:Math.max(0,Number(current.wins||0)-(won?1:0)),losses:Math.max(0,Number(current.losses||0)-(won?0:1)),kos_for:Math.max(0,Number(current.kos_for||0)-Number(kf||0)),kos_against:Math.max(0,Number(current.kos_against||0)-Number(ka||0))});
+  }
+  const {error}=await supabase.from('rankings').upsert(rows,{onConflict:'name'});if(error)throw error;
+  for(const row of rows){const i=state.rankings.findIndex(r=>r.name.toLowerCase()===row.name.toLowerCase());if(i>=0)state.rankings[i]={...state.rankings[i],...row};else state.rankings.push(row)}
+  return false;
+}
+async function rematchMatch(id){
+  const m=state.matches.find(x=>x.id===id);if(!m||!["finished","walkover"].includes(m.status))return;
+  if(!confirm('¿Crear rematch? Se devolverán las apuestas relacionadas y se quitarán los puntos/estadísticas obtenidos en esta pelea.'))return;
+  try{
+    const refunded=await refundBetsForRematch(id);
+    const exact=await restoreRankingForRematch(m);
+    const cleanOdds={...(m.base_odds||{})};delete cleanOdds.rematch_ranking_before;
+    const {error}=await supabase.from('matches').update({status:'scheduled',score_a:0,score_b:0,winner_id:null,base_odds:cleanOdds}).eq('id',id);if(error)throw error;
+    Object.assign(m,{status:'scheduled',score_a:0,score_b:0,winner_id:null,base_odds:cleanOdds});
+    await refreshTournamentState(m.tournament_id);
+    alert(`Rematch preparado. ${refunded} apuesta(s) reembolsada(s).${exact?'':' El ELO de esta pelea antigua se revirtió de forma aproximada.'}`);
+  }catch(err){console.error(err);alert('No se pudo preparar el rematch: '+(err?.message||err))}
+}
+
 async function finishMatch(id,walkover=false,side=null){
   const m=state.matches.find(x=>x.id===id);if(!m)return;
   let a=0,b=0,winner=null,status="finished";
@@ -1723,13 +1786,15 @@ async function finishMatch(id,walkover=false,side=null){
     if(a===b){alert("El marcador no puede terminar empatado.");return}
     winner=a>b?m.side_a:m.side_b;
   }
-  const previous={score_a:m.score_a,score_b:m.score_b,status:m.status,winner_id:m.winner_id};
-  Object.assign(m,{score_a:a,score_b:b,status,winner_id:winner});
+  const previous={score_a:m.score_a,score_b:m.score_b,status:m.status,winner_id:m.winner_id,base_odds:m.base_odds};
+  const firstFinish=!["finished","walkover"].includes(previous.status);
+  const baseOddsWithSnapshot=firstFinish?{...(m.base_odds||{}),rematch_ranking_before:rankingSnapshotForMatch(m)}:(m.base_odds||{});
+  Object.assign(m,{score_a:a,score_b:b,status,winner_id:winner,base_odds:baseOddsWithSnapshot});
   renderMatchAdmin();renderBetMatches();renderBetStandings();renderBetTournamentStandings();renderResults();
-  const {error}=await supabase.from("matches").update({score_a:a,score_b:b,status,winner_id:winner}).eq("id",id);
+  const {error}=await supabase.from("matches").update({score_a:a,score_b:b,status,winner_id:winner,base_odds:m.base_odds}).eq("id",id);
   if(error){Object.assign(m,previous);renderAll();alert(error.message);return}
   try{
-    if(!["finished","walkover"].includes(previous.status))await updateRankingAfterMatch(m,a,b,winner);
+    if(firstFinish)await updateRankingAfterMatch(m,a,b,winner);
     if(typeof settleBets==="function")await settleBets(id);
   }catch(err){console.error("La pelea finalizó, pero falló una tarea secundaria:",err)}
   if(m.phase==="group")await autoGenerateKnockout(m.tournament_id);

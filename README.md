@@ -159,3 +159,13 @@ Se agregó debajo de la Ruleta Pokémon un buscador por nombre o código Pokéde
 - Reembolsa las apuestas directas y las combinadas relacionadas con esa pelea; si una apuesta ganadora ya pagó, primero descuenta el premio y después devuelve la apuesta.
 - Revierte el ELO, victorias, derrotas y KO obtenidos en esa pelea. Las peleas finalizadas desde esta versión guardan una copia exacta del ranking anterior; para peleas antiguas la devolución del ELO es aproximada.
 - No requiere cambios SQL.
+
+
+## v56 · Todos contra todos con ida y vuelta
+- Los torneos **Todos contra Todos** siempre se crean con un solo grupo.
+- Al crearlos aparece la opción **Ida y vuelta**, desactivada por defecto.
+- Al activarla, cada pareja juega dos partidos: A vs B y B vs A.
+- La primera vuelta se genera completa y después se genera la segunda con los lados invertidos.
+- Cada partido mantiene sus propias apuestas, marcador, ELO, KO y opción de Rematch.
+- El contador de enfrentamientos muestra el total correcto con una o dos vueltas.
+- No requiere cambios SQL.

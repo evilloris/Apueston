@@ -344,6 +344,7 @@
         <div><label>Cantidad de participantes/equipos</label><input id="tournamentParticipantCount" type="number" min="2" max="32" value="8"></div>
         <div><label>Cantidad de grupos</label><input id="tournamentGroups" type="number" min="1" max="26" value="2"></div>
         <div><label>Clasifican por grupo</label><input id="qualifyPerGroup" type="number" min="1" value="2"></div>
+        <div id="roundRobinHomeAwayWrap" hidden><label class="inline-check"><input id="roundRobinHomeAway" type="checkbox"> Ida y vuelta (cada pareja juega 2 partidos)</label><div class="muted" style="margin-top:6px">En Todos contra Todos siempre se usa un solo grupo.</div></div>
       </div>
       <button id="createTournament" style="margin-top:12px">Crear torneo y generar tarjetas</button>
     </div>
@@ -433,6 +434,6 @@
   </div>
 </div>
 
-<script type="module" src="./app.js?v=55"></script>
+<script type="module" src="./app.js?v=56"></script>
 </body>
 </html>

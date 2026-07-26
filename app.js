@@ -1161,7 +1161,8 @@ function tournamentMatchCountDetails(t,repechageOverride,thirdOverride){
   if(!t)return {group:0,repechage:0,knockout:0,third:0,final:0,total:0};
   const n=Number(t.config?.participant_count||0);
   if(isRoundRobinTournament(t)){
-    const group=n>1?n*(n-1)/2:0;
+    const baseGroup=n>1?n*(n-1)/2:0;
+    const group=t.config?.home_away?baseGroup*2:baseGroup;
     return {group,repechage:0,knockout:0,third:0,final:0,total:group};
   }
   const groups=Math.max(1,Number(t.config?.groups||1));
@@ -1238,6 +1239,7 @@ $("#createTournament").onclick=async()=>{
   let groups=+$("#tournamentGroups").value;
   let qualify=+$("#qualifyPerGroup").value;
   const roundRobin=format==="round-robin";
+  const homeAway=roundRobin && Boolean($("#roundRobinHomeAway")?.checked);
   if(roundRobin){groups=1;qualify=1;}
 
   if(!name){alert("Escribe el nombre del torneo.");return}
@@ -1247,7 +1249,7 @@ $("#createTournament").onclick=async()=>{
 
   const config={
     groups, qualify_per_group:qualify, participant_count,
-    third_place:roundRobin?false:true, repechage:false, round_robin:roundRobin
+    third_place:roundRobin?false:true, repechage:false, round_robin:roundRobin, home_away:homeAway
   };
   const {data,error}=await supabase.from("tournaments").insert({name,format,config}).select().single();
   if(error){alert(error.message);return}
@@ -1267,7 +1269,7 @@ function renderTournamentsAdmin(){
     const count=t.config?.participant_count||0;
     return `<div class="card">
       <strong>${esc(t.name)}</strong>
-      <div class="muted">${isRoundRobinTournament(t)?"Todos contra todos":esc(t.format)} · ${count} participantes · ${t.config?.groups||1} grupos · ${esc(t.status)}</div>
+      <div class="muted">${isRoundRobinTournament(t)?`Todos contra todos${t.config?.home_away?" · Ida y vuelta":""}`:esc(t.format)} · ${count} participantes · ${t.config?.groups||1} grupo${(t.config?.groups||1)===1?"":"s"} · ${esc(t.status)}</div>
       <button class="secondary" data-edit-tournament="${t.id}">Administrar</button>
       <button class="danger" data-delete-tournament="${t.id}">Eliminar</button>
     </div>`;
@@ -1498,12 +1500,21 @@ $("#generateFixture").onclick=async()=>{
   let rows=[];let round=1;
   for(const g of groupNumbers.sort((a,b)=>a-b)){
     const gp=isRoundRobinTournament(t)?shuffled(ps.filter(p=>p.group_no===g)):ps.filter(p=>p.group_no===g);
+    const firstLeg=[];
     for(let i=0;i<gp.length;i++)for(let j=i+1;j<gp.length;j++){
-      rows.push({tournament_id:tid,phase:"group",round_no:round++,group_no:g,side_a:gp[i].id,side_b:gp[j].id,status:"scheduled"});
-      if(t.format==="1v1-double")rows.push({tournament_id:tid,phase:"group",round_no:round++,group_no:g,side_a:gp[j].id,side_b:gp[i].id,status:"scheduled"});
+      firstLeg.push({tournament_id:tid,phase:"group",group_no:g,side_a:gp[i].id,side_b:gp[j].id,status:"scheduled"});
+      if(t.format==="1v1-double")firstLeg.push({tournament_id:tid,phase:"group",group_no:g,side_a:gp[j].id,side_b:gp[i].id,status:"scheduled"});
+    }
+    if(isRoundRobinTournament(t)){
+      const orderedFirstLeg=shuffled(firstLeg);
+      for(const row of orderedFirstLeg)rows.push({...row,round_no:round++});
+      if(t.config?.home_away){
+        for(const row of orderedFirstLeg)rows.push({...row,round_no:round++,side_a:row.side_b,side_b:row.side_a});
+      }
+    }else{
+      for(const row of firstLeg)rows.push({...row,round_no:round++});
     }
   }
-  if(isRoundRobinTournament(t))rows=shuffled(rows).map((row,i)=>({...row,round_no:i+1}));
   const {error}=await supabase.from("matches").insert(rows);
   if(error){alert(error.message);return}
   await supabase.from("tournaments").update({status:"active"}).eq("id",tid);
@@ -2547,6 +2558,8 @@ function syncTournamentFormatFields(){
   const rr=$("#tournamentFormat")?.value==="round-robin";
   if($("#tournamentGroups")){ $("#tournamentGroups").disabled=rr; if(rr)$("#tournamentGroups").value=1; }
   if($("#qualifyPerGroup")){ $("#qualifyPerGroup").disabled=rr; if(rr)$("#qualifyPerGroup").value=1; }
+  if($("#roundRobinHomeAwayWrap"))$("#roundRobinHomeAwayWrap").hidden=!rr;
+  if(!rr&&$("#roundRobinHomeAway"))$("#roundRobinHomeAway").checked=false;
   const button=$("#createTournament");if(button)button.textContent=rr?"Crear todos contra todos y generar tarjetas":"Crear torneo y generar tarjetas";
 }
 if($("#tournamentFormat"))$("#tournamentFormat").addEventListener("change",syncTournamentFormatFields);

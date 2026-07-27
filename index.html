@@ -375,6 +375,11 @@
 
     <div class="panel" id="matchAdminPanel" hidden>
       <h2>3. Peleas del torneo</h2>
+      <div class="row" style="margin-bottom:12px">
+        <button id="importTournamentSchedule" class="secondary" type="button">📄 Importar horarios (.txt)</button>
+        <input id="tournamentScheduleFile" type="file" accept=".txt,text/plain" hidden>
+        <span class="muted">Formato: 25-07-2026 22:00 OLISE-Zapi</span>
+      </div>
       <div id="matchAdminList"></div>
     </div>
 
@@ -434,6 +439,6 @@
   </div>
 </div>
 
-<script type="module" src="./app.js?v=56"></script>
+<script type="module" src="./app.js?v=57"></script>
 </body>
 </html>

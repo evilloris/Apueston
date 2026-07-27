@@ -1635,6 +1635,76 @@ async function saveSchedule(id){
   renderMatchAdmin();renderBetMatches();
   alert("Fecha y hora guardadas.");
 }
+
+function normalizedScheduleName(value){
+  return String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().replace(/\s+/g," ").toLowerCase();
+}
+function parseTournamentScheduleLine(line){
+  const match=String(line||"").trim().match(/^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2})\s+(.+?)-(.+)$/);
+  if(!match)return null;
+  const [,dd,mm,yyyy,hh,min,sideA,sideB]=match;
+  const day=Number(dd),month=Number(mm),year=Number(yyyy),hour=Number(hh),minute=Number(min);
+  const date=new Date(year,month-1,day,hour,minute,0,0);
+  if(date.getFullYear()!==year||date.getMonth()!==month-1||date.getDate()!==day||date.getHours()!==hour||date.getMinutes()!==minute)return null;
+  if(!sideA.trim()||!sideB.trim())return null;
+  return {sideA:sideA.trim(),sideB:sideB.trim(),scheduledAt:date.toISOString()};
+}
+async function importTournamentScheduleFile(file){
+  const tid=$("#adminTournamentSelect")?.value;
+  if(!tid){alert("Selecciona un torneo antes de importar los horarios.");return}
+  if(!file)return;
+  let text;
+  try{text=await file.text()}catch(error){alert("No se pudo leer el archivo TXT.");return}
+  const lines=text.replace(/^\uFEFF/,"").split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
+  if(!lines.length){alert("El archivo TXT está vacío.");return}
+
+  const available=tournamentMatches(tid).filter(match=>match.side_a&&match.side_b);
+  const queues=new Map();
+  for(const match of available){
+    const key=`${normalizedScheduleName(participantName(match.side_a))}|||${normalizedScheduleName(participantName(match.side_b))}`;
+    if(!queues.has(key))queues.set(key,[]);
+    queues.get(key).push(match);
+  }
+  for(const queue of queues.values())queue.sort((a,b)=>(Number(a.round_no)||0)-(Number(b.round_no)||0)||new Date(a.created_at||0)-new Date(b.created_at||0));
+
+  const updates=[];
+  const invalid=[];
+  const notFound=[];
+  lines.forEach((line,index)=>{
+    const parsed=parseTournamentScheduleLine(line);
+    if(!parsed){invalid.push(`Línea ${index+1}: ${line}`);return}
+    const key=`${normalizedScheduleName(parsed.sideA)}|||${normalizedScheduleName(parsed.sideB)}`;
+    const match=queues.get(key)?.shift();
+    if(!match){notFound.push(`Línea ${index+1}: ${parsed.sideA}-${parsed.sideB}`);return}
+    updates.push({match,scheduledAt:parsed.scheduledAt});
+  });
+
+  let updated=0;
+  const errors=[];
+  for(const item of updates){
+    const {error}=await supabase.from("matches").update({scheduled_at:item.scheduledAt}).eq("id",item.match.id);
+    if(error){errors.push(`${participantName(item.match.side_a)}-${participantName(item.match.side_b)}: ${error.message}`);continue}
+    item.match.scheduled_at=item.scheduledAt;updated++;
+  }
+  renderMatchAdmin();renderBetMatches();
+  const details=[`Importación finalizada.`,`✔ ${updated} partido${updated===1?"":"s"} actualizado${updated===1?"":"s"}.`];
+  if(notFound.length)details.push(`⚠ ${notFound.length} partido${notFound.length===1?"":"s"} no encontrado${notFound.length===1?"":"s"}:\n${notFound.join("\n")}`);
+  if(invalid.length)details.push(`⚠ ${invalid.length} línea${invalid.length===1?"":"s"} inválida${invalid.length===1?"":"s"}:\n${invalid.join("\n")}`);
+  if(errors.length)details.push(`❌ ${errors.length} error${errors.length===1?"":"es"} al guardar:\n${errors.join("\n")}`);
+  alert(details.join("\n\n"));
+}
+
+if($("#importTournamentSchedule")&&$("#tournamentScheduleFile")){
+  $("#importTournamentSchedule").onclick=()=>{
+    if(!$("#adminTournamentSelect")?.value){alert("Selecciona un torneo antes de importar los horarios.");return}
+    $("#tournamentScheduleFile").value="";
+    $("#tournamentScheduleFile").click();
+  };
+  $("#tournamentScheduleFile").onchange=async event=>{
+    const file=event.target.files?.[0];
+    if(file)await importTournamentScheduleFile(file);
+  };
+}
 async function startMatch(id){
   const m=state.matches.find(x=>x.id===id);if(!m)return;
   m.status="live";m.score_a=m.score_a??0;m.score_b=m.score_b??0;

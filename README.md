@@ -171,8 +171,9 @@ Se agregó debajo de la Ruleta Pokémon un buscador por nombre o código Pokéde
 - No requiere cambios SQL.
 
 
-v57
-- Importar calendario desde TXT.
-- Formato: DD-MM-AAAA HH:MM Jugador1-Jugador2
-- Asigna automáticamente fecha y hora a los enfrentamientos.
-- Compatible con ida y vuelta.
+## v57 · Importación de horarios desde TXT
+- En la pantalla administrativa del torneo se agregó el botón **Importar horarios (.txt)**.
+- Cada línea debe usar el formato `DD-MM-AAAA HH:MM Jugador1-Jugador2`, por ejemplo: `25-07-2026 22:00 OLISE-Zapi`.
+- La página busca el enfrentamiento respetando el orden de los jugadores, por lo que distingue `OLISE-Zapi` de `Zapi-OLISE`.
+- Asigna automáticamente la fecha y hora a cada pelea encontrada y muestra un resumen de partidos actualizados, no encontrados y líneas inválidas.
+- No requiere cambios SQL.

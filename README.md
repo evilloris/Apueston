@@ -169,3 +169,10 @@ Se agregó debajo de la Ruleta Pokémon un buscador por nombre o código Pokéde
 - Cada partido mantiene sus propias apuestas, marcador, ELO, KO y opción de Rematch.
 - El contador de enfrentamientos muestra el total correcto con una o dos vueltas.
 - No requiere cambios SQL.
+
+
+v57
+- Importar calendario desde TXT.
+- Formato: DD-MM-AAAA HH:MM Jugador1-Jugador2
+- Asigna automáticamente fecha y hora a los enfrentamientos.
+- Compatible con ida y vuelta.

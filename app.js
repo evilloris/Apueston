@@ -11,7 +11,7 @@ const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;',
 const money = n => new Intl.NumberFormat("es-BO").format(Number(n || 0));
 
 let state = {
-  admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[], cashierTransactions:[], cashierAdditionRequests:[], announcements:[], announcementReplies:[], polls:[], pollOptions:[], pollVotes:[], numberGameSettings:null, numberGameSessions:[], numberGameRounds:[], numberGameBusy:false, numberGameSelectedMargin:5, numberGameTab:"games", mineGameSettings:null, mineGameSession:null, mineGameBusy:false, mineGameLastResult:null, cashierTab:"cash", rewardTab:"available", selectedRewardIds:new Set(), deliverySelectedRewardIds:new Set(), deliveryCopiedRewardIds:new Set(), storeItems:[], storePurchases:[], tournamentChampions:[], championOdds:[], storeTab:"shop"
+  admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[], cashierTransactions:[], cashierAdditionRequests:[], announcements:[], announcementReplies:[], polls:[], pollOptions:[], pollVotes:[], numberGameSettings:null, numberGameSessions:[], numberGameRounds:[], numberGameBusy:false, numberGameSelectedMargin:5, numberGameTab:"games", mineGameSettings:null, mineGameSession:null, mineGameBusy:false, mineGameLastResult:null, cashierTab:"cash", rewardTab:"available", selectedRewardIds:new Set(), deliverySelectedRewardIds:new Set(), deliveryCopiedRewardIds:new Set(), storeItems:[], storePurchases:[], tournamentChampions:[], championOdds:[], storeTab:"shop", bettingTab:"bet"
 };
 let editingAnnouncementId = null;
 let pendingPaidReward = null;
@@ -130,7 +130,7 @@ function renderAll(){
   $("#loginButton").hidden=!!state.account; $("#logoutButton").hidden=!state.account;
   renderLeaderboard(); renderCommunityFeed(); renderCommunityNotificationBadge(); if($("#view-home")?.classList.contains("active"))markCommunityNotificationsSeen(); renderActiveEvents(); renderTournamentSelects(); renderBetMatches(); renderBetTournamentStandings(); renderBetStandings();
   renderMyBets(); renderGeneralStats(); renderResults(); renderAccountsAdmin();
-  renderCreditsAdmin(); renderTournamentsAdmin(); renderIndividualEventsAdmin(); renderRewards(); renderStore(); renderStoreAdmin(); renderChampionMarket(); // ============================================================
+  renderCreditsAdmin(); renderTournamentsAdmin(); renderIndividualEventsAdmin(); renderRewards(); renderStore(); renderStoreAdmin(); renderTournamentPositionMarkets(); renderBettingTabs(); // ============================================================
 // v27 · Minijuego Adivina el número
 // ============================================================
 const NG_MARGIN_LABEL={5:"±5",2:"±2",1:"±1",0:"Exacto"};
@@ -574,7 +574,7 @@ function renderTournamentSelects(){
   $("#matchAdminPanel").hidden=!selected;
   $("#knockoutPanel").hidden=!selected||isIndividualEvent(selected);
 }
-$("#betTournamentSelect").onchange=()=>{renderBetMatches();renderBetStandings()};
+$("#betTournamentSelect").onchange=()=>{renderBetMatches();renderBetStandings();renderTournamentPositionMarkets()};
 $("#resultTournamentSelect").onchange=renderResults;
 
 function participantAverageElo(participant){
@@ -877,9 +877,11 @@ function betStatusInfo(status){
   return map[status]||{label:String(status||'Pendiente'),className:'bet-status-pending'};
 }
 function betTypeLabel(type){
-  return ({winner:'Ganador',handicap:'Hándicap',score:'Marcador exacto',parlay:'Combinada',champion:'Campeón'})[type]||type;
+  return ({winner:'Ganador',handicap:'Hándicap',score:'Marcador exacto',parlay:'Combinada',champion:'Ganador del torneo',last_place:'Perdedor del torneo'})[type]||type;
 }
 function describeBetSelection(type,selection,match){
+  if(type==='champion')return `Ganará el torneo: ${participantName(selection?.participant_id)}`;
+  if(type==='last_place')return `Perderá el torneo: ${participantName(selection?.participant_id)}`;
   if(!match)return 'Enfrentamiento no disponible';
   const a=participantName(match.side_a),b=participantName(match.side_b);
   if(type==='winner')return `Ganador: ${participantName(selection?.participant_id)}`;
@@ -895,20 +897,32 @@ function parlayDetail(bet){
     return `${title}: ${describeBetSelection(leg.bet_type,leg.selection,match)} (x${Number(leg.locked_odds).toFixed(3)})`;
   }).join(' · ');
 }
-function renderMyBets(){
-  if(!state.account){$("#myBets").innerHTML='<div class="muted">Inicia sesión.</div>';return}
-  const rows=state.bets.filter(b=>b.account_id===state.account.id).map(b=>{
+function betsTable(rows,emptyText){
+  const body=rows.map(b=>{
     const info=betStatusInfo(b.status);
     const match=state.matches.find(m=>m.id===b.match_id);
-    const selectionDetail=b.bet_type==='parlay'
-      ? parlayDetail(b)
-      : describeBetSelection(b.bet_type,b.selection,match);
-    const potentialGain=Number(b.stake||0)*Number(b.locked_odds||0);
-    const detail=`${selectionDetail?`<div class="bet-detail">${esc(selectionDetail)}</div>`:''}<div class="bet-detail"><strong>Ganancia:</strong> ${money(potentialGain)}</div>`;
+    const selectionDetail=b.bet_type==='parlay'?parlayDetail(b):describeBetSelection(b.bet_type,b.selection,match);
+    const potentialGain=Math.floor(Number(b.stake||0)*Number(b.locked_odds||0));
+    const tournament=state.tournaments.find(t=>t.id===b.tournament_id);
+    const detail=`${tournament?`<div class="bet-detail"><strong>Torneo:</strong> ${esc(tournament.name)}</div>`:''}${selectionDetail?`<div class="bet-detail">${esc(selectionDetail)}</div>`:''}<div class="bet-detail"><strong>Pago potencial:</strong> ${money(potentialGain)}</div>`;
     return `<tr class="${info.className}"><td>${esc(betTypeLabel(b.bet_type))}${detail}</td><td>${money(b.stake)}</td><td>x${Number(b.locked_odds).toFixed(3)}</td><td><span class="bet-status ${info.className}">${esc(info.label)}</span></td><td>${money(b.payout||0)}</td></tr>`;
-  }).join("");
-  $("#myBets").innerHTML=`<table><thead><tr><th>Tipo</th><th>Monto</th><th>Cuota</th><th>Estado</th><th>Pago</th></tr></thead><tbody>${rows||'<tr><td colspan="5">Sin apuestas.</td></tr>'}</tbody></table>`;
+  }).join('');
+  return `<table><thead><tr><th>Tipo</th><th>Monto</th><th>Cuota</th><th>Estado</th><th>Pago</th></tr></thead><tbody>${body||`<tr><td colspan="5">${esc(emptyText)}</td></tr>`}</tbody></table>`;
 }
+function renderMyBets(){
+  const active=$('#activeBets'),history=$('#betHistory');
+  if(!active||!history)return;
+  if(!state.account){active.innerHTML='<div class="muted">Inicia sesión.</div>';history.innerHTML='<div class="muted">Inicia sesión.</div>';return}
+  const mine=state.bets.filter(b=>b.account_id===state.account.id).sort((a,b)=>Date.parse(b.created_at||0)-Date.parse(a.created_at||0));
+  active.innerHTML=betsTable(mine.filter(b=>b.status==='pending'),'No tienes apuestas vigentes.');
+  history.innerHTML=betsTable(mine.filter(b=>b.status!=='pending'),'Todavía no tienes apuestas finalizadas.');
+}
+function renderBettingTabs(){
+  const bet=$('#bettingTabBet'),history=$('#bettingTabHistory');if(!bet||!history)return;
+  bet.hidden=state.bettingTab!=='bet';history.hidden=state.bettingTab!=='history';
+  $$('[data-betting-tab]').forEach(btn=>btn.classList.toggle('active',btn.dataset.bettingTab===state.bettingTab));
+}
+$$('[data-betting-tab]').forEach(btn=>btn.onclick=()=>{state.bettingTab=btn.dataset.bettingTab;renderBettingTabs();renderMyBets()});
 
 
 function minecraftNameForAccount(account){
@@ -976,17 +990,59 @@ function renderStoreAdmin(){
   $$('[data-delete-store]').forEach(b=>b.onclick=async()=>{if(confirm('¿Eliminar este objeto?')){await supabase.from('store_items').delete().eq('id',b.dataset.deleteStore);await loadAll()}});
 }
 if($("#createStoreItem"))$("#createStoreItem").onclick=async()=>{const display_name=$("#storeItemName").value.trim(),item_id=$("#storeItemId").value.trim(),price=parseInt($("#storeItemPrice").value,10),default_quantity=parseInt($("#storeItemQuantity").value,10),weekly_limit=Math.max(0,parseInt($("#storeItemWeeklyLimit")?.value||0,10));if(!display_name||!item_id||price<1||default_quantity<1){alert('Completa todos los campos.');return}const {error}=await supabase.from('store_items').insert({display_name,item_id,price,default_quantity,weekly_limit});if(error)alert(error.message);else{$("#storeItemName").value='';$("#storeItemId").value='';$("#storeItemWeeklyLimit").value='0';await loadAll()}};
-function renderChampionMarket(){
-  const root=$("#championBetMarket"),panel=$("#championBetPanel");if(!root||!panel)return;const tid=$("#betTournamentSelect")?.value,t=state.tournaments.find(x=>x.id===tid);panel.hidden=!t||isIndividualEvent(t);if(panel.hidden)return;
-  const ps=state.participants.filter(p=>p.tournament_id===tid),champ=state.tournamentChampions.find(x=>x.tournament_id===tid);
-  if(champ){root.innerHTML=`<div class="card"><strong>Campeón: ${esc(participantName(champ.participant_id))}</strong></div>`;return}
-  const roundRobin=t.format==='round-robin';const groupMatches=state.matches.filter(m=>m.tournament_id===tid&&m.phase==='group'&&m.side_a&&m.side_b);const allDone=groupMatches.length>0&&groupMatches.every(m=>['finished','walkover'].includes(m.status));const autoButton=state.admin&&roundRobin&&allDone?`<div class="card"><button id="resolveChampionByPoints">Resolver campeón por puntos</button><div class="muted">Se elegirá al primero de la tabla de posiciones.</div></div>`:'';
-  root.innerHTML=autoButton+ps.map(p=>{const o=state.championOdds.find(x=>x.tournament_id===tid&&x.participant_id===p.id&&x.active);return `<div class="card"><strong>${esc(p.display_name)}</strong><div class="row" style="margin-top:8px">${state.admin?`<input type="number" min="1.001" step="0.001" value="${o?.odds||2}" data-champ-odds="${p.id}" style="max-width:110px"><button data-save-champ-odds="${p.id}">Guardar cuota</button>`:o?`<span>x${Number(o.odds).toFixed(3)}</span><input type="number" min="1" value="50" data-champ-stake="${p.id}" style="max-width:110px"><button data-bet-champ="${p.id}">Apostar</button>`:'<span class="muted">Sin cuota</span>'}${state.admin?`<button class="secondary" data-set-champion="${p.id}">Declarar campeón</button>`:''}</div></div>`}).join('')||'<div class="muted">Sin participantes.</div>';
-  if($('#resolveChampionByPoints'))$('#resolveChampionByPoints').onclick=async()=>{const winner=standingsFor(tid)[0];if(!winner)return;const {error}=await supabase.rpc('resolve_tournament_champion',{p_tournament_id:tid,p_participant_id:winner.id,p_automatic:true});if(error)alert(error.message);else await loadAll()};
-  $$('[data-save-champ-odds]').forEach(b=>b.onclick=async()=>{const odds=Number($(`[data-champ-odds="${b.dataset.saveChampOdds}"]`).value);const {error}=await supabase.from('tournament_champion_odds').upsert({tournament_id:tid,participant_id:b.dataset.saveChampOdds,odds,active:true},{onConflict:'tournament_id,participant_id'});if(error)alert(error.message);else await loadAll()});
-  $$('[data-bet-champ]').forEach(b=>b.onclick=async()=>{if(!state.account){alert('Primero inicia sesión.');return}const stake=parseInt($(`[data-champ-stake="${b.dataset.betChamp}"]`).value,10);const {error}=await supabase.rpc('place_champion_bet',{p_account_id:state.account.id,p_tournament_id:tid,p_participant_id:b.dataset.betChamp,p_stake:stake});if(error)alert(error.message);else await loadAll()});
-  $$('[data-set-champion]').forEach(b=>b.onclick=async()=>{if(!confirm(`¿Declarar campeón a ${participantName(b.dataset.setChampion)}?`))return;const {error}=await supabase.rpc('resolve_tournament_champion',{p_tournament_id:tid,p_participant_id:b.dataset.setChampion,p_automatic:false});if(error)alert(error.message);else await loadAll()});
+function tournamentPerformance(participant){
+  const ranking=rankingFor(participant.display_name);
+  const tournamentMatches=state.matches.filter(m=>m.tournament_id===participant.tournament_id&&['finished','walkover'].includes(m.status)&&(m.side_a===participant.id||m.side_b===participant.id));
+  let wins=0,losses=0,kf=0,ka=0;
+  for(const m of tournamentMatches){
+    const isA=m.side_a===participant.id;
+    kf+=Number(isA?m.score_a:m.score_b)||0;ka+=Number(isA?m.score_b:m.score_a)||0;
+    if(m.winner_id===participant.id)wins++;else if(m.winner_id)losses++;
+  }
+  return {elo:Number(ranking?.elo)||1000,wins,losses,kf,ka};
 }
+function tournamentPositionOdds(tid,market){
+  const ps=state.participants.filter(p=>p.tournament_id===tid);
+  const raw=ps.map(p=>{
+    const x=tournamentPerformance(p);
+    const strength=Math.max(1,Math.exp((x.elo-1000)/420)*(1+x.wins*.20+x.kf*.025)/(1+x.losses*.15+x.ka*.018));
+    return {p,stats:x,weight:market==='champion'?strength:1/strength};
+  });
+  const total=raw.reduce((n,x)=>n+x.weight,0)||1;
+  return raw.map(x=>({...x,odds:Math.max(1.05,Math.min(25,0.90/(x.weight/total)))})).sort((a,b)=>a.odds-b.odds);
+}
+function hasTournamentMarketBet(tid,type){return !!state.account&&state.bets.some(b=>b.account_id===state.account.id&&b.tournament_id===tid&&b.bet_type===type)}
+function renderPositionMarket(rootId,market){
+  const root=$(rootId),panel=market==='champion'?$('#championBetPanel'):$('#loserBetPanel');if(!root||!panel)return;
+  const tid=$('#betTournamentSelect')?.value,t=state.tournaments.find(x=>x.id===tid);panel.hidden=!t||isIndividualEvent(t);if(panel.hidden)return;
+  const outcome=state.tournamentChampions.find(x=>x.tournament_id===tid);
+  const resolvedId=market==='champion'?outcome?.participant_id:outcome?.last_place_participant_id;
+  if(resolvedId){root.innerHTML=`<div class="card"><strong>${market==='champion'?'Ganador':'Perdedor'}: ${esc(participantName(resolvedId))}</strong></div>`;return}
+  const rows=tournamentPositionOdds(tid,market),type=market==='champion'?'champion':'last_place',already=hasTournamentMarketBet(tid,type);
+  const roundRobin=t.format==='round-robin';
+  const allDone=state.matches.filter(m=>m.tournament_id===tid&&m.side_a&&m.side_b).length>0&&state.matches.filter(m=>m.tournament_id===tid&&m.side_a&&m.side_b).every(m=>['finished','walkover'].includes(m.status));
+  const auto=state.admin&&roundRobin&&allDone?`<div class="card"><button data-auto-position="${market}">Resolver automáticamente</button><div class="muted">Se usará ${market==='champion'?'el primero':'el último'} de la tabla.</div></div>`:'';
+  const notice=already?'<div class="card"><strong>Ya realizaste esta apuesta.</strong><div class="muted">Solo se permite una vez por torneo.</div></div>':'';
+  root.innerHTML=auto+notice+`<div class="grid">${rows.map(({p,stats,odds})=>`<div class="card"><strong>${esc(p.display_name)}</strong><div class="muted">ELO ${stats.elo} · ${stats.wins}V/${stats.losses}D · KO ${stats.kf}-${stats.ka}</div><div class="row" style="margin-top:8px"><strong>x${odds.toFixed(3)}</strong>${!state.admin&&!already?`<input type="number" min="1" value="50" data-position-stake="${market}|${p.id}" style="max-width:110px"><button data-position-bet="${market}|${p.id}|${odds.toFixed(4)}">Apostar</button>`:''}${state.admin?`<button class="secondary" data-resolve-position="${market}|${p.id}">Declarar ${market==='champion'?'ganador':'perdedor'}</button>`:''}</div></div>`).join('')}</div>`;
+  $$('[data-position-bet]',root).forEach(btn=>btn.onclick=async()=>{
+    if(!state.account){alert('Primero inicia sesión.');return}
+    const [kind,pid,odds]=btn.dataset.positionBet.split('|');const stake=Number($(`[data-position-stake="${kind}|${pid}"]`).value);
+    const {error}=await supabase.rpc('place_tournament_position_bet',{p_account_id:state.account.id,p_tournament_id:tid,p_participant_id:pid,p_market:kind,p_stake:stake,p_odds:Number(odds)});
+    if(error)alert(error.message);else await loadAll();
+  });
+  $$('[data-resolve-position]',root).forEach(btn=>btn.onclick=async()=>{
+    const [kind,pid]=btn.dataset.resolvePosition.split('|');if(!confirm(`¿Confirmar a ${participantName(pid)} como ${kind==='champion'?'ganador':'perdedor'}?`))return;
+    const fn=kind==='champion'?'resolve_tournament_champion':'resolve_tournament_last_place';const args=kind==='champion'?{p_tournament_id:tid,p_participant_id:pid,p_automatic:false}:{p_tournament_id:tid,p_participant_id:pid,p_automatic:false};
+    const {error}=await supabase.rpc(fn,args);if(error)alert(error.message);else await loadAll();
+  });
+  $$('[data-auto-position]',root).forEach(btn=>btn.onclick=async()=>{
+    const st=standingsFor(tid),pid=btn.dataset.autoPosition==='champion'?st[0]?.id:st[st.length-1]?.id;if(!pid)return;
+    const fn=btn.dataset.autoPosition==='champion'?'resolve_tournament_champion':'resolve_tournament_last_place';const {error}=await supabase.rpc(fn,{p_tournament_id:tid,p_participant_id:pid,p_automatic:true});if(error)alert(error.message);else await loadAll();
+  });
+}
+function renderTournamentPositionMarkets(){renderPositionMarket('#championBetMarket','champion');renderPositionMarket('#loserBetMarket','last_place')}
+function renderChampionMarket(){renderTournamentPositionMarkets()}
+
 function renderGeneralStats(){
   const accountNames=new Set(state.accounts.map(a=>a.username.toLowerCase()));
   const rows=state.rankings.filter(r=>accountNames.has(r.name.toLowerCase())).map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.name)}</td>${state.admin?`<td>${r.elo}</td>`:""}<td>${r.wins}</td><td>${r.losses}</td><td>${r.kos_for}</td><td>${r.kos_against}</td></tr>`).join("");

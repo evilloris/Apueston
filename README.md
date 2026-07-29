@@ -204,3 +204,9 @@ Se agregó debajo de la Ruleta Pokémon un buscador por nombre o código Pokéde
 - El límite se aplica por jugador y por objeto, de lunes a domingo (hora de Bolivia).
 - 0 significa sin límite.
 - La validación se realiza también dentro de Supabase para evitar compras simultáneas que superen el límite.
+
+## v61 — apuestas de ganador y perdedor
+
+Ejecuta una vez `ACTUALIZAR_APUESTAS_GANADOR_Y_PERDEDOR_V61.sql` en Supabase.
+
+En Apuestas ahora existen dos pestañas: `Apostar` e `Historial de apuestas`. Debajo de los enfrentamientos aparecen los mercados `¿Quién ganará?` y `¿Quién perderá?`. Cada cuenta puede apostar una sola vez en cada mercado por torneo. Las cuotas se calculan automáticamente con ELO, victorias, derrotas, KO+ y KO-. Las apuestas pendientes aparecen al final de `Apostar` y las finalizadas en el historial.

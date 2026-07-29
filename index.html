@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#090d14">
   <title>Liga Pokémon · Poképachanga</title>
-  <link rel="stylesheet" href="./styles.css?v=60">
+  <link rel="stylesheet" href="./styles.css?v=61">
 </head>
 <body>
 <header>
@@ -96,26 +96,46 @@
 
   <section id="view-betting" class="view">
     <div class="panel">
-      <h2>Seleccionar evento</h2>
-      <select id="betTournamentSelect"></select>
-      <div id="betTournamentStandings" class="group-standings"></div>
+      <div class="reward-tabs" role="tablist" aria-label="Secciones de apuestas">
+        <button type="button" class="reward-tab active" data-betting-tab="bet">Apostar</button>
+        <button type="button" class="reward-tab" data-betting-tab="history">Historial de apuestas</button>
+      </div>
     </div>
-    <div class="panel">
-      <h2>Tabla de posiciones</h2>
-      <div id="betStandings"></div>
+
+    <div id="bettingTabBet">
+      <div class="panel">
+        <h2>Seleccionar evento</h2>
+        <select id="betTournamentSelect"></select>
+        <div id="betTournamentStandings" class="group-standings"></div>
+      </div>
+      <div class="panel">
+        <h2>Tabla de posiciones</h2>
+        <div id="betStandings"></div>
+      </div>
+      <div class="panel">
+        <h2>Enfrentamientos abiertos</h2>
+        <div id="betMatches" class="grid"></div>
+        <div id="parlayBuilder" class="parlay-builder" hidden></div>
+      </div>
+      <div class="panel" id="championBetPanel">
+        <h2>🏆 ¿Quién ganará?</h2>
+        <div id="championBetMarket"></div>
+      </div>
+      <div class="panel" id="loserBetPanel">
+        <h2>💀 ¿Quién perderá?</h2>
+        <div id="loserBetMarket"></div>
+      </div>
+      <div class="panel">
+        <h2>Apuestas vigentes</h2>
+        <div id="activeBets"></div>
+      </div>
     </div>
-    <div class="panel">
-      <h2>Enfrentamientos abiertos</h2>
-      <div id="betMatches" class="grid"></div>
-      <div id="parlayBuilder" class="parlay-builder" hidden></div>
-    </div>
-    <div class="panel" id="championBetPanel">
-      <h2>🏆 ¿Quién ganará el torneo?</h2>
-      <div id="championBetMarket"></div>
-    </div>
-    <div class="panel">
-      <h2>Mis apuestas</h2>
-      <div id="myBets"></div>
+
+    <div id="bettingTabHistory" hidden>
+      <div class="panel">
+        <h2>Historial de apuestas</h2>
+        <div id="betHistory"></div>
+      </div>
     </div>
   </section>
 
@@ -474,6 +494,6 @@
   </div>
 </div>
 
-<script type="module" src="./app.js?v=60"></script>
+<script type="module" src="./app.js?v=61"></script>
 </body>
 </html>

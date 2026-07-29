@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#090d14">
   <title>Liga Pokémon · Poképachanga</title>
-  <link rel="stylesheet" href="./styles.css?v=58">
+  <link rel="stylesheet" href="./styles.css?v=60">
 </head>
 <body>
 <header>
@@ -141,6 +141,7 @@
         <div><label>ID del objeto</label><input id="storeItemId" placeholder="Ej: cobblemon:rare_candy"></div>
         <div><label>Precio en créditos</label><input id="storeItemPrice" type="number" min="1" value="100"></div>
         <div><label>Cantidad base</label><input id="storeItemQuantity" type="number" min="1" value="1"></div>
+        <div><label>Límite semanal por jugador</label><input id="storeItemWeeklyLimit" type="number" min="0" value="0"><small>0 = sin límite</small></div>
       </div>
       <button id="createStoreItem" style="margin-top:12px">Agregar objeto</button>
       <div id="storeItemAdminList" style="margin-top:14px"></div>
@@ -473,6 +474,6 @@
   </div>
 </div>
 
-<script type="module" src="./app.js?v=58"></script>
+<script type="module" src="./app.js?v=60"></script>
 </body>
 </html>

@@ -915,12 +915,52 @@ function minecraftNameForAccount(account){
   const map={davi:"davicowww",erickcld:"ErickCST",lix:"LixitoRoa",olise:"OLISE",tycrays:"Tycrays",volterwf:"Volterwf",japi:"xJAPlx",zapi:"Z4P131"};
   return map[String(account?.username||"").toLowerCase()]||account?.username||"Jugador";
 }
+function storeWeekRange(){
+  // Bolivia usa UTC-4 y no aplica horario de verano.
+  const boliviaNow=new Date(Date.now()-4*60*60*1000);
+  const mondayOffset=(boliviaNow.getUTCDay()+6)%7;
+  const start=new Date(Date.UTC(
+    boliviaNow.getUTCFullYear(),
+    boliviaNow.getUTCMonth(),
+    boliviaNow.getUTCDate()-mondayOffset,
+    4,0,0,0
+  ));
+  const end=new Date(start.getTime()+7*24*60*60*1000);
+  return {start,end};
+}
+function storeWeeklyPurchased(accountId,storeItemId,purchases=state.storePurchases){
+  if(!accountId||!storeItemId)return 0;
+  const {start,end}=storeWeekRange();
+  return purchases
+    .filter(x=>x.account_id===accountId&&x.store_item_id===storeItemId&&x.status!=='cancelled'&&new Date(x.created_at)>=start&&new Date(x.created_at)<end)
+    .reduce((sum,x)=>sum+Number(x.quantity||0),0);
+}
 function renderStore(){
   const shop=$("#storeShop"), purchases=$("#storePurchases");if(!shop||!purchases)return;
   $$('[data-store-tab]').forEach(b=>{b.classList.toggle('active',b.dataset.storeTab===state.storeTab);b.onclick=()=>{state.storeTab=b.dataset.storeTab;renderStore()}});
   shop.hidden=state.storeTab!=="shop";purchases.hidden=state.storeTab!=="purchases";
-  shop.innerHTML=state.storeItems.filter(x=>x.active).map(x=>`<div class="card"><strong>${esc(x.display_name)}</strong><div class="muted">${esc(x.item_id)}</div><div style="margin:8px 0">${money(x.price)} créditos por unidad</div><div class="row"><input type="number" min="1" value="${x.default_quantity||1}" data-store-qty="${x.id}" style="max-width:110px"><button data-buy-store="${x.id}">Comprar</button></div></div>`).join("")||'<div class="muted">No hay objetos disponibles.</div>';
-  $$('[data-buy-store]').forEach(b=>b.onclick=async()=>{if(!state.account){alert('Primero inicia sesión.');return}const q=Math.max(1,parseInt($(`[data-store-qty="${b.dataset.buyStore}"]`)?.value||1,10));const {error}=await supabase.rpc('store_buy_item',{p_account_id:state.account.id,p_store_item_id:b.dataset.buyStore,p_quantity:q});if(error)alert(error.message);else await loadAll()});
+  shop.innerHTML=state.storeItems.filter(x=>x.active).map(x=>{
+    const limit=Math.max(0,Number(x.weekly_limit||0));
+    const used=storeWeeklyPurchased(state.account?.id,x.id);
+    const remaining=limit?Math.max(0,limit-used):Infinity;
+    const suggested=Math.max(1,Math.min(Number(x.default_quantity||1),limit?Math.max(1,remaining):Number(x.default_quantity||1)));
+    return `<div class="card"><strong>${esc(x.display_name)}</strong><div class="muted">${esc(x.item_id)}</div><div style="margin:8px 0">${money(x.price)} créditos por unidad</div><div class="muted">${limit?`Límite semanal: ${used} / ${limit}`:'Sin límite semanal'}</div><div class="row" style="margin-top:8px"><input type="number" min="1" ${limit?`max="${Math.max(1,remaining)}"`:''} value="${suggested}" data-store-qty="${x.id}" style="max-width:110px"><button data-buy-store="${x.id}" ${limit&&remaining===0?'disabled':''}>Comprar</button></div>${limit&&remaining===0?'<div class="muted">Alcanzaste el límite de este objeto. Se reinicia cada lunes.</div>':''}</div>`;
+  }).join("")||'<div class="muted">No hay objetos disponibles.</div>';
+  $$('[data-buy-store]').forEach(b=>b.onclick=async()=>{
+    if(!state.account){alert('Primero inicia sesión.');return}
+    const item=state.storeItems.find(x=>x.id===b.dataset.buyStore);
+    const q=Math.max(1,parseInt($(`[data-store-qty="${b.dataset.buyStore}"]`)?.value||1,10));
+    const limit=Math.max(0,Number(item?.weekly_limit||0));
+    if(limit){
+      const {start,end}=storeWeekRange();
+      const {data:currentPurchases,error:checkError}=await supabase.from('store_purchases').select('quantity,status').eq('account_id',state.account.id).eq('store_item_id',item.id).gte('created_at',start.toISOString()).lt('created_at',end.toISOString()).neq('status','cancelled');
+      if(checkError){alert('No se pudo comprobar el límite semanal: '+checkError.message);return}
+      const used=(currentPurchases||[]).reduce((sum,x)=>sum+Number(x.quantity||0),0);
+      if(used+q>limit){alert(`Límite semanal superado para ${item.display_name}. Ya compraste ${used} de ${limit} y solo puedes comprar ${Math.max(0,limit-used)} más.`);await loadAll();return}
+    }
+    const {error}=await supabase.rpc('store_buy_item',{p_account_id:state.account.id,p_store_item_id:b.dataset.buyStore,p_quantity:q});
+    if(error)alert(error.message);else await loadAll()
+  });
   const list=state.admin?state.storePurchases:state.storePurchases.filter(x=>x.account_id===state.account?.id);
   const pendingCommands=list.filter(x=>x.status==='pending').map(x=>{const a=state.accounts.find(y=>y.id===x.account_id);return `/give ${minecraftNameForAccount(a)} ${x.item_id} ${x.quantity}`});
   purchases.innerHTML=(state.admin&&pendingCommands.length?`<div class="row" style="margin-bottom:12px"><button id="copyAllPendingPurchases">Copiar lista pendiente</button><span class="muted">${pendingCommands.length} comandos</span></div>`:'')+list.map(x=>{const a=state.accounts.find(y=>y.id===x.account_id);const cmd=`/give ${minecraftNameForAccount(a)} ${x.item_id} ${x.quantity}`;return `<div class="card"><strong>${esc(a?.username||'Cuenta')} · ${esc(x.item_name)} x${x.quantity}</strong><div class="muted">${money(x.total_price)} créditos · ${esc(x.status)}</div>${state.admin?`<div class="row" style="margin-top:8px"><button class="secondary" data-copy-purchase="${x.id}">Copiar /give</button>${x.status==='pending'?`<button data-deliver-purchase="${x.id}">Marcar entregado</button>`:''}</div><code style="display:block;margin-top:8px">${esc(cmd)}</code>`:''}</div>`}).join("")||'<div class="muted">No hay objetos comprados.</div>';
@@ -930,11 +970,12 @@ function renderStore(){
 }
 function renderStoreAdmin(){
   const root=$("#storeItemAdminList");if(!root)return;
-  root.innerHTML=state.storeItems.map(x=>`<div class="card"><strong>${esc(x.display_name)}</strong><div>${esc(x.item_id)} · ${money(x.price)} créditos · cantidad ${x.default_quantity}</div><div class="row" style="margin-top:8px"><button class="secondary" data-toggle-store="${x.id}">${x.active?'Desactivar':'Activar'}</button><button class="danger" data-delete-store="${x.id}">Eliminar</button></div></div>`).join("")||'<div class="muted">Sin objetos cargados.</div>';
+  root.innerHTML=state.storeItems.map(x=>`<div class="card"><strong>${esc(x.display_name)}</strong><div>${esc(x.item_id)} · ${money(x.price)} créditos · cantidad ${x.default_quantity}</div><div class="row" style="margin-top:8px"><label style="min-width:190px">Límite semanal por jugador</label><input type="number" min="0" value="${Number(x.weekly_limit||0)}" data-store-limit="${x.id}" style="max-width:110px"><button data-save-store-limit="${x.id}">Guardar límite</button></div><div class="muted">0 significa sin límite.</div><div class="row" style="margin-top:8px"><button class="secondary" data-toggle-store="${x.id}">${x.active?'Desactivar':'Activar'}</button><button class="danger" data-delete-store="${x.id}">Eliminar</button></div></div>`).join("")||'<div class="muted">Sin objetos cargados.</div>';
+  $$('[data-save-store-limit]').forEach(b=>b.onclick=async()=>{const weekly_limit=Math.max(0,parseInt($(`[data-store-limit="${b.dataset.saveStoreLimit}"]`)?.value||0,10));const {error}=await supabase.from('store_items').update({weekly_limit}).eq('id',b.dataset.saveStoreLimit);if(error)alert(error.message);else await loadAll()});
   $$('[data-toggle-store]').forEach(b=>b.onclick=async()=>{const x=state.storeItems.find(y=>y.id===b.dataset.toggleStore);await supabase.from('store_items').update({active:!x.active}).eq('id',x.id);await loadAll()});
   $$('[data-delete-store]').forEach(b=>b.onclick=async()=>{if(confirm('¿Eliminar este objeto?')){await supabase.from('store_items').delete().eq('id',b.dataset.deleteStore);await loadAll()}});
 }
-if($("#createStoreItem"))$("#createStoreItem").onclick=async()=>{const display_name=$("#storeItemName").value.trim(),item_id=$("#storeItemId").value.trim(),price=parseInt($("#storeItemPrice").value,10),default_quantity=parseInt($("#storeItemQuantity").value,10);if(!display_name||!item_id||price<1||default_quantity<1){alert('Completa todos los campos.');return}const {error}=await supabase.from('store_items').insert({display_name,item_id,price,default_quantity});if(error)alert(error.message);else{$("#storeItemName").value='';$("#storeItemId").value='';await loadAll()}};
+if($("#createStoreItem"))$("#createStoreItem").onclick=async()=>{const display_name=$("#storeItemName").value.trim(),item_id=$("#storeItemId").value.trim(),price=parseInt($("#storeItemPrice").value,10),default_quantity=parseInt($("#storeItemQuantity").value,10),weekly_limit=Math.max(0,parseInt($("#storeItemWeeklyLimit")?.value||0,10));if(!display_name||!item_id||price<1||default_quantity<1){alert('Completa todos los campos.');return}const {error}=await supabase.from('store_items').insert({display_name,item_id,price,default_quantity,weekly_limit});if(error)alert(error.message);else{$("#storeItemName").value='';$("#storeItemId").value='';$("#storeItemWeeklyLimit").value='0';await loadAll()}};
 function renderChampionMarket(){
   const root=$("#championBetMarket"),panel=$("#championBetPanel");if(!root||!panel)return;const tid=$("#betTournamentSelect")?.value,t=state.tournaments.find(x=>x.id===tid);panel.hidden=!t||isIndividualEvent(t);if(panel.hidden)return;
   const ps=state.participants.filter(p=>p.tournament_id===tid),champ=state.tournamentChampions.find(x=>x.tournament_id===tid);

@@ -8,5 +8,8 @@ export const CONFIG = {
 
   STARTING_CREDITS: 1000,
   DAILY_WHEEL_TIMEZONE: "America/La_Paz",
-  WALKOVER_MINUTES: 20
+  WALKOVER_MINUTES: 20,
+
+  // Límite total de unidades que cada jugador puede comprar de lunes a domingo.
+  // Usa 0 para desactivar el límite.
 };

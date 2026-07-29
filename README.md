@@ -188,3 +188,19 @@ Se agregó debajo de la Ruleta Pokémon un buscador por nombre o código Pokéde
 - Cuotas configurables por el administrador y apuestas al campeón.
 - En Todos contra Todos, el administrador puede resolver al campeón usando el primero por puntos.
 - Ejecutar `ACTUALIZAR_TIENDA_Y_APUESTAS_CAMPEON.sql` una sola vez antes de usar estas funciones.
+
+
+## v59 · Límite semanal de la tienda
+- Cada cuenta puede comprar como máximo 10 unidades en total por semana.
+- El conteo se reinicia cada lunes a las 00:00, hora de Bolivia.
+- La tienda muestra el progreso semanal del jugador y bloquea compras que excedan el límite.
+- Cada objeto tiene su propio límite semanal por jugador, configurable desde Administración → Objetos. Usa 0 para dejar ese objeto sin límite.
+- Para actualizar una instalación existente, ejecuta `ACTUALIZAR_LIMITES_SEMANALES_POR_OBJETO.sql` en Supabase.
+- No requiere ejecutar SQL nuevo.
+
+
+## v60 — Límites semanales por objeto
+- El administrador define un límite diferente para cada objeto desde la página.
+- El límite se aplica por jugador y por objeto, de lunes a domingo (hora de Bolivia).
+- 0 significa sin límite.
+- La validación se realiza también dentro de Supabase para evitar compras simultáneas que superen el límite.

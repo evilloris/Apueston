@@ -877,11 +877,11 @@ function betStatusInfo(status){
   return map[status]||{label:String(status||'Pendiente'),className:'bet-status-pending'};
 }
 function betTypeLabel(type){
-  return ({winner:'Ganador',handicap:'Hándicap',score:'Marcador exacto',parlay:'Combinada',champion:'Ganador del torneo',last_place:'Perdedor del torneo'})[type]||type;
+  return ({winner:'Ganador',handicap:'Hándicap',score:'Marcador exacto',parlay:'Combinada',champion:'Ganador del torneo',last_place:'Último lugar del torneo'})[type]||type;
 }
 function describeBetSelection(type,selection,match){
   if(type==='champion')return `Ganará el torneo: ${participantName(selection?.participant_id)}`;
-  if(type==='last_place')return `Perderá el torneo: ${participantName(selection?.participant_id)}`;
+  if(type==='last_place')return `Quedará último: ${participantName(selection?.participant_id)}`;
   if(!match)return 'Enfrentamiento no disponible';
   const a=participantName(match.side_a),b=participantName(match.side_b);
   if(type==='winner')return `Ganador: ${participantName(selection?.participant_id)}`;
@@ -991,15 +991,16 @@ function renderStoreAdmin(){
 }
 if($("#createStoreItem"))$("#createStoreItem").onclick=async()=>{const display_name=$("#storeItemName").value.trim(),item_id=$("#storeItemId").value.trim(),price=parseInt($("#storeItemPrice").value,10),default_quantity=parseInt($("#storeItemQuantity").value,10),weekly_limit=Math.max(0,parseInt($("#storeItemWeeklyLimit")?.value||0,10));if(!display_name||!item_id||price<1||default_quantity<1){alert('Completa todos los campos.');return}const {error}=await supabase.from('store_items').insert({display_name,item_id,price,default_quantity,weekly_limit});if(error)alert(error.message);else{$("#storeItemName").value='';$("#storeItemId").value='';$("#storeItemWeeklyLimit").value='0';await loadAll()}};
 function tournamentPerformance(participant){
+  // Las cuotas usan las estadísticas GENERALES acumuladas del jugador,
+  // no solamente lo ocurrido dentro del torneo seleccionado.
   const ranking=rankingFor(participant.display_name);
-  const tournamentMatches=state.matches.filter(m=>m.tournament_id===participant.tournament_id&&['finished','walkover'].includes(m.status)&&(m.side_a===participant.id||m.side_b===participant.id));
-  let wins=0,losses=0,kf=0,ka=0;
-  for(const m of tournamentMatches){
-    const isA=m.side_a===participant.id;
-    kf+=Number(isA?m.score_a:m.score_b)||0;ka+=Number(isA?m.score_b:m.score_a)||0;
-    if(m.winner_id===participant.id)wins++;else if(m.winner_id)losses++;
-  }
-  return {elo:Number(ranking?.elo)||1000,wins,losses,kf,ka};
+  return {
+    elo:Number(ranking?.elo)||1000,
+    wins:Number(ranking?.wins)||0,
+    losses:Number(ranking?.losses)||0,
+    kf:Number(ranking?.kos_for)||0,
+    ka:Number(ranking?.kos_against)||0
+  };
 }
 function tournamentPositionOdds(tid,market){
   const ps=state.participants.filter(p=>p.tournament_id===tid);
@@ -1017,13 +1018,16 @@ function renderPositionMarket(rootId,market){
   const tid=$('#betTournamentSelect')?.value,t=state.tournaments.find(x=>x.id===tid);panel.hidden=!t||isIndividualEvent(t);if(panel.hidden)return;
   const outcome=state.tournamentChampions.find(x=>x.tournament_id===tid);
   const resolvedId=market==='champion'?outcome?.participant_id:outcome?.last_place_participant_id;
-  if(resolvedId){root.innerHTML=`<div class="card"><strong>${market==='champion'?'Ganador':'Perdedor'}: ${esc(participantName(resolvedId))}</strong></div>`;return}
+  if(resolvedId){root.innerHTML=`<div class="card"><strong>${market==='champion'?'Ganador del torneo':'Último lugar'}: ${esc(participantName(resolvedId))}</strong></div>`;return}
   const rows=tournamentPositionOdds(tid,market),type=market==='champion'?'champion':'last_place',already=hasTournamentMarketBet(tid,type);
   const roundRobin=t.format==='round-robin';
   const allDone=state.matches.filter(m=>m.tournament_id===tid&&m.side_a&&m.side_b).length>0&&state.matches.filter(m=>m.tournament_id===tid&&m.side_a&&m.side_b).every(m=>['finished','walkover'].includes(m.status));
   const auto=state.admin&&roundRobin&&allDone?`<div class="card"><button data-auto-position="${market}">Resolver automáticamente</button><div class="muted">Se usará ${market==='champion'?'el primero':'el último'} de la tabla.</div></div>`:'';
-  const notice=already?'<div class="card"><strong>Ya realizaste esta apuesta.</strong><div class="muted">Solo se permite una vez por torneo.</div></div>':'';
-  root.innerHTML=auto+notice+`<div class="grid">${rows.map(({p,stats,odds})=>`<div class="card"><strong>${esc(p.display_name)}</strong><div class="muted">ELO ${stats.elo} · ${stats.wins}V/${stats.losses}D · KO ${stats.kf}-${stats.ka}</div><div class="row" style="margin-top:8px"><strong>x${odds.toFixed(3)}</strong>${!state.admin&&!already?`<input type="number" min="1" value="50" data-position-stake="${market}|${p.id}" style="max-width:110px"><button data-position-bet="${market}|${p.id}|${odds.toFixed(4)}">Apostar</button>`:''}${state.admin?`<button class="secondary" data-resolve-position="${market}|${p.id}">Declarar ${market==='champion'?'ganador':'perdedor'}</button>`:''}</div></div>`).join('')}</div>`;
+  const notice=already?'<div class="card"><strong>Ya realizaste esta apuesta.</strong><div class="muted">Solo puedes apostar una vez por torneo y únicamente por un jugador en este mercado.</div></div>':'';
+  const explanation=market==='champion'
+    ?'<div class="muted" style="margin-bottom:12px">Elige quién crees que será campeón. Solo puedes apostar una vez por torneo y por un único jugador. Las cuotas usan el ELO oculto y las estadísticas generales acumuladas.</div>'
+    :'<div class="muted" style="margin-bottom:12px">Elige quién crees que finalizará en el último lugar. Solo puedes apostar una vez por torneo y por un único jugador. Las cuotas usan el ELO oculto y las estadísticas generales acumuladas.</div>';
+  root.innerHTML=auto+explanation+notice+`<div class="grid">${rows.map(({p,stats,odds})=>`<div class="card"><strong>${esc(p.display_name)}</strong><div class="muted">Victorias: ${stats.wins} · Derrotas: ${stats.losses} · KO+: ${stats.kf} · KO−: ${stats.ka}</div><div class="row" style="margin-top:8px"><strong>x${odds.toFixed(3)}</strong>${!state.admin&&!already?`<input type="number" min="1" value="50" data-position-stake="${market}|${p.id}" style="max-width:110px"><button data-position-bet="${market}|${p.id}|${odds.toFixed(4)}">Apostar</button>`:''}${state.admin?`<button class="secondary" data-resolve-position="${market}|${p.id}">Declarar ${market==='champion'?'ganador':'último lugar'}</button>`:''}</div></div>`).join('')}</div>`;
   $$('[data-position-bet]',root).forEach(btn=>btn.onclick=async()=>{
     if(!state.account){alert('Primero inicia sesión.');return}
     const [kind,pid,odds]=btn.dataset.positionBet.split('|');const stake=Number($(`[data-position-stake="${kind}|${pid}"]`).value);
@@ -1031,7 +1035,7 @@ function renderPositionMarket(rootId,market){
     if(error)alert(error.message);else await loadAll();
   });
   $$('[data-resolve-position]',root).forEach(btn=>btn.onclick=async()=>{
-    const [kind,pid]=btn.dataset.resolvePosition.split('|');if(!confirm(`¿Confirmar a ${participantName(pid)} como ${kind==='champion'?'ganador':'perdedor'}?`))return;
+    const [kind,pid]=btn.dataset.resolvePosition.split('|');if(!confirm(`¿Confirmar a ${participantName(pid)} como ${kind==='champion'?'ganador':'último lugar'}?`))return;
     const fn=kind==='champion'?'resolve_tournament_champion':'resolve_tournament_last_place';const args=kind==='champion'?{p_tournament_id:tid,p_participant_id:pid,p_automatic:false}:{p_tournament_id:tid,p_participant_id:pid,p_automatic:false};
     const {error}=await supabase.rpc(fn,args);if(error)alert(error.message);else await loadAll();
   });

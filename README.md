@@ -210,3 +210,8 @@ Se agregó debajo de la Ruleta Pokémon un buscador por nombre o código Pokéde
 Ejecuta una vez `ACTUALIZAR_APUESTAS_GANADOR_Y_PERDEDOR_V61.sql` en Supabase.
 
 En Apuestas ahora existen dos pestañas: `Apostar` e `Historial de apuestas`. Debajo de los enfrentamientos aparecen los mercados `¿Quién ganará?` y `¿Quién perderá?`. Cada cuenta puede apostar una sola vez en cada mercado por torneo. Las cuotas se calculan automáticamente con ELO, victorias, derrotas, KO+ y KO-. Las apuestas pendientes aparecen al final de `Apostar` y las finalizadas en el historial.
+
+
+## v62 — cuotas generales y último lugar
+
+Los mercados se llaman `¿Quién ganará el torneo?` y `¿Quién quedará último?`. Cada cuenta solo puede apostar una vez por torneo en cada mercado y debe elegir un único jugador. Las cuotas usan el ELO oculto y las estadísticas generales acumuladas del jugador: victorias, derrotas, KO+ y KO-. El ELO influye en el cálculo, pero no se muestra en la interfaz.

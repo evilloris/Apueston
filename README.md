@@ -177,3 +177,14 @@ Se agregó debajo de la Ruleta Pokémon un buscador por nombre o código Pokéde
 - La página busca el enfrentamiento respetando el orden de los jugadores, por lo que distingue `OLISE-Zapi` de `Zapi-OLISE`.
 - Asigna automáticamente la fecha y hora a cada pelea encontrada y muestra un resumen de partidos actualizados, no encontrados y líneas inválidas.
 - No requiere cambios SQL.
+
+## v58 · Tienda y apuesta al campeón
+- Nueva pestaña Tienda con catálogo y Objetos comprados.
+- Nueva pestaña administrativa Objetos para cargar nombre, ID, precio y cantidad base.
+- Compras con descuento atómico de créditos mediante Supabase.
+- Comandos `/give jugador id cantidad`, copia individual y copia de toda la lista pendiente.
+- Estado pendiente/entregado para las compras.
+- Mercado ¿Quién ganará el torneo? debajo de Enfrentamientos abiertos.
+- Cuotas configurables por el administrador y apuestas al campeón.
+- En Todos contra Todos, el administrador puede resolver al campeón usando el primero por puntos.
+- Ejecutar `ACTUALIZAR_TIENDA_Y_APUESTAS_CAMPEON.sql` una sola vez antes de usar estas funciones.

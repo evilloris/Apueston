@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#090d14">
   <title>Liga Pokémon · Poképachanga</title>
-  <link rel="stylesheet" href="./styles.css?v=55">
+  <link rel="stylesheet" href="./styles.css?v=58">
 </head>
 <body>
 <header>
@@ -65,9 +65,11 @@
     <button data-view="results">📜 Resultados</button>
     <button data-view="wheel">🎡 Ruletas</button>
     <button data-view="minigames">🎮 Minijuegos</button>
+    <button data-view="store">🛒 Tienda</button>
     <button data-view="accounts" class="admin-only">👥 Cuentas</button>
     <button data-view="credits" class="cashier-access" hidden>💳 Caja</button>
     <button data-view="tournaments" class="admin-only">🏆 Torneos</button>
+    <button data-view="objects" class="admin-only">📦 Objetos</button>
   </nav>
 
   <section id="view-home" class="view active">
@@ -107,9 +109,41 @@
       <div id="betMatches" class="grid"></div>
       <div id="parlayBuilder" class="parlay-builder" hidden></div>
     </div>
+    <div class="panel" id="championBetPanel">
+      <h2>🏆 ¿Quién ganará el torneo?</h2>
+      <div id="championBetMarket"></div>
+    </div>
     <div class="panel">
       <h2>Mis apuestas</h2>
       <div id="myBets"></div>
+    </div>
+  </section>
+
+
+  <section id="view-store" class="view">
+    <div class="panel">
+      <h2>Tienda</h2>
+      <div class="reward-tabs">
+        <button type="button" class="reward-tab active" data-store-tab="shop">Tienda</button>
+        <button type="button" class="reward-tab" data-store-tab="purchases">Objetos comprados</button>
+      </div>
+      <div id="storeShop"></div>
+      <div id="storePurchases" hidden></div>
+    </div>
+  </section>
+
+  <section id="view-objects" class="view admin-only">
+    <div class="panel">
+      <h2>Objetos de la tienda</h2>
+      <p class="muted">Agrega los objetos desde la página. No se incluye ningún objeto predefinido.</p>
+      <div class="grid">
+        <div><label>Nombre del objeto</label><input id="storeItemName" placeholder="Ej: Caramelo raro"></div>
+        <div><label>ID del objeto</label><input id="storeItemId" placeholder="Ej: cobblemon:rare_candy"></div>
+        <div><label>Precio en créditos</label><input id="storeItemPrice" type="number" min="1" value="100"></div>
+        <div><label>Cantidad base</label><input id="storeItemQuantity" type="number" min="1" value="1"></div>
+      </div>
+      <button id="createStoreItem" style="margin-top:12px">Agregar objeto</button>
+      <div id="storeItemAdminList" style="margin-top:14px"></div>
     </div>
   </section>
 
@@ -439,6 +473,6 @@
   </div>
 </div>
 
-<script type="module" src="./app.js?v=57"></script>
+<script type="module" src="./app.js?v=58"></script>
 </body>
 </html>

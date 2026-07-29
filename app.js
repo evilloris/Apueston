@@ -11,7 +11,7 @@ const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;',
 const money = n => new Intl.NumberFormat("es-BO").format(Number(n || 0));
 
 let state = {
-  admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[], cashierTransactions:[], cashierAdditionRequests:[], announcements:[], announcementReplies:[], polls:[], pollOptions:[], pollVotes:[], numberGameSettings:null, numberGameSessions:[], numberGameRounds:[], numberGameBusy:false, numberGameSelectedMargin:5, numberGameTab:"games", mineGameSettings:null, mineGameSession:null, mineGameBusy:false, mineGameLastResult:null, cashierTab:"cash", rewardTab:"available", selectedRewardIds:new Set(), deliverySelectedRewardIds:new Set(), deliveryCopiedRewardIds:new Set()
+  admin:false, account:null, tournaments:[], participants:[], matches:[], bets:[], rewards:[], rankings:[], cashierTransactions:[], cashierAdditionRequests:[], announcements:[], announcementReplies:[], polls:[], pollOptions:[], pollVotes:[], numberGameSettings:null, numberGameSessions:[], numberGameRounds:[], numberGameBusy:false, numberGameSelectedMargin:5, numberGameTab:"games", mineGameSettings:null, mineGameSession:null, mineGameBusy:false, mineGameLastResult:null, cashierTab:"cash", rewardTab:"available", selectedRewardIds:new Set(), deliverySelectedRewardIds:new Set(), deliveryCopiedRewardIds:new Set(), storeItems:[], storePurchases:[], tournamentChampions:[], championOdds:[], storeTab:"shop"
 };
 let editingAnnouncementId = null;
 let pendingPaidReward = null;
@@ -61,7 +61,7 @@ async function removeExpiredRewards(){
 
 async function loadAll(){
   await removeExpiredRewards();
-  const [accounts,tournaments,participants,matches,bets,rewards,rankings,cashierTransactions,cashierAdditionRequests,announcements,announcementReplies,polls,pollOptions,pollVotes,numberGameSettings,numberGameSessions,numberGameRounds,mineGameSettings,mineGameSession] = await Promise.all([
+  const [accounts,tournaments,participants,matches,bets,rewards,rankings,cashierTransactions,cashierAdditionRequests,announcements,announcementReplies,polls,pollOptions,pollVotes,numberGameSettings,numberGameSessions,numberGameRounds,mineGameSettings,mineGameSession,storeItems,storePurchases,tournamentChampions,championOdds] = await Promise.all([
     supabase.from("accounts").select("*").order("credits",{ascending:false}),
     supabase.from("tournaments").select("*").order("created_at",{ascending:false}),
     supabase.from("tournament_participants").select("*"),
@@ -80,9 +80,13 @@ async function loadAll(){
     supabase.from("number_game_sessions").select("*").order("updated_at",{ascending:false}),
     supabase.from("number_game_rounds").select("*").order("created_at",{ascending:false}).limit(15),
     supabase.from("mine_game_settings").select("*").eq("id",true).maybeSingle(),
-    state.account ? supabase.rpc("mine_game_get_state",{p_account_id:state.account.id}) : Promise.resolve({data:null,error:null})
+    state.account ? supabase.rpc("mine_game_get_state",{p_account_id:state.account.id}) : Promise.resolve({data:null,error:null}),
+    supabase.from("store_items").select("*").order("created_at"),
+    supabase.from("store_purchases").select("*").order("created_at",{ascending:false}),
+    supabase.from("tournament_champions").select("*"),
+    supabase.from("tournament_champion_odds").select("*")
   ]);
-  for(const result of [accounts,tournaments,participants,matches,bets,rewards,rankings,cashierTransactions,cashierAdditionRequests,announcements,announcementReplies,polls,pollOptions,pollVotes,numberGameSettings,numberGameSessions,numberGameRounds,mineGameSettings,mineGameSession]){
+  for(const result of [accounts,tournaments,participants,matches,bets,rewards,rankings,cashierTransactions,cashierAdditionRequests,announcements,announcementReplies,polls,pollOptions,pollVotes,numberGameSettings,numberGameSessions,numberGameRounds,mineGameSettings,mineGameSession,storeItems,storePurchases,tournamentChampions,championOdds]){
     if(result.error) console.error(result.error);
   }
   state.accounts=accounts.data||[];
@@ -104,6 +108,10 @@ async function loadAll(){
   state.numberGameRounds=numberGameRounds.data||[];
   state.mineGameSettings=mineGameSettings.data||null;
   state.mineGameSession=mineGameSession.data||null;
+  state.storeItems=storeItems.data||[];
+  state.storePurchases=storePurchases.data||[];
+  state.tournamentChampions=tournamentChampions.data||[];
+  state.championOdds=championOdds.data||[];
   if(state.account) state.account=state.accounts.find(a=>a.id===state.account.id)||null;
   renderAll();
 }
@@ -122,7 +130,7 @@ function renderAll(){
   $("#loginButton").hidden=!!state.account; $("#logoutButton").hidden=!state.account;
   renderLeaderboard(); renderCommunityFeed(); renderCommunityNotificationBadge(); if($("#view-home")?.classList.contains("active"))markCommunityNotificationsSeen(); renderActiveEvents(); renderTournamentSelects(); renderBetMatches(); renderBetTournamentStandings(); renderBetStandings();
   renderMyBets(); renderGeneralStats(); renderResults(); renderAccountsAdmin();
-  renderCreditsAdmin(); renderTournamentsAdmin(); renderIndividualEventsAdmin(); renderRewards(); // ============================================================
+  renderCreditsAdmin(); renderTournamentsAdmin(); renderIndividualEventsAdmin(); renderRewards(); renderStore(); renderStoreAdmin(); renderChampionMarket(); // ============================================================
 // v27 · Minijuego Adivina el número
 // ============================================================
 const NG_MARGIN_LABEL={5:"±5",2:"±2",1:"±1",0:"Exacto"};
@@ -902,6 +910,42 @@ function renderMyBets(){
   $("#myBets").innerHTML=`<table><thead><tr><th>Tipo</th><th>Monto</th><th>Cuota</th><th>Estado</th><th>Pago</th></tr></thead><tbody>${rows||'<tr><td colspan="5">Sin apuestas.</td></tr>'}</tbody></table>`;
 }
 
+
+function minecraftNameForAccount(account){
+  const map={davi:"davicowww",erickcld:"ErickCST",lix:"LixitoRoa",olise:"OLISE",tycrays:"Tycrays",volterwf:"Volterwf",japi:"xJAPlx",zapi:"Z4P131"};
+  return map[String(account?.username||"").toLowerCase()]||account?.username||"Jugador";
+}
+function renderStore(){
+  const shop=$("#storeShop"), purchases=$("#storePurchases");if(!shop||!purchases)return;
+  $$('[data-store-tab]').forEach(b=>{b.classList.toggle('active',b.dataset.storeTab===state.storeTab);b.onclick=()=>{state.storeTab=b.dataset.storeTab;renderStore()}});
+  shop.hidden=state.storeTab!=="shop";purchases.hidden=state.storeTab!=="purchases";
+  shop.innerHTML=state.storeItems.filter(x=>x.active).map(x=>`<div class="card"><strong>${esc(x.display_name)}</strong><div class="muted">${esc(x.item_id)}</div><div style="margin:8px 0">${money(x.price)} créditos por unidad</div><div class="row"><input type="number" min="1" value="${x.default_quantity||1}" data-store-qty="${x.id}" style="max-width:110px"><button data-buy-store="${x.id}">Comprar</button></div></div>`).join("")||'<div class="muted">No hay objetos disponibles.</div>';
+  $$('[data-buy-store]').forEach(b=>b.onclick=async()=>{if(!state.account){alert('Primero inicia sesión.');return}const q=Math.max(1,parseInt($(`[data-store-qty="${b.dataset.buyStore}"]`)?.value||1,10));const {error}=await supabase.rpc('store_buy_item',{p_account_id:state.account.id,p_store_item_id:b.dataset.buyStore,p_quantity:q});if(error)alert(error.message);else await loadAll()});
+  const list=state.admin?state.storePurchases:state.storePurchases.filter(x=>x.account_id===state.account?.id);
+  const pendingCommands=list.filter(x=>x.status==='pending').map(x=>{const a=state.accounts.find(y=>y.id===x.account_id);return `/give ${minecraftNameForAccount(a)} ${x.item_id} ${x.quantity}`});
+  purchases.innerHTML=(state.admin&&pendingCommands.length?`<div class="row" style="margin-bottom:12px"><button id="copyAllPendingPurchases">Copiar lista pendiente</button><span class="muted">${pendingCommands.length} comandos</span></div>`:'')+list.map(x=>{const a=state.accounts.find(y=>y.id===x.account_id);const cmd=`/give ${minecraftNameForAccount(a)} ${x.item_id} ${x.quantity}`;return `<div class="card"><strong>${esc(a?.username||'Cuenta')} · ${esc(x.item_name)} x${x.quantity}</strong><div class="muted">${money(x.total_price)} créditos · ${esc(x.status)}</div>${state.admin?`<div class="row" style="margin-top:8px"><button class="secondary" data-copy-purchase="${x.id}">Copiar /give</button>${x.status==='pending'?`<button data-deliver-purchase="${x.id}">Marcar entregado</button>`:''}</div><code style="display:block;margin-top:8px">${esc(cmd)}</code>`:''}</div>`}).join("")||'<div class="muted">No hay objetos comprados.</div>';
+  if($('#copyAllPendingPurchases'))$('#copyAllPendingPurchases').onclick=async()=>navigator.clipboard.writeText(pendingCommands.join('\n'));
+  $$('[data-copy-purchase]').forEach(b=>b.onclick=async()=>{const x=state.storePurchases.find(y=>y.id===b.dataset.copyPurchase),a=state.accounts.find(y=>y.id===x?.account_id);if(x)await navigator.clipboard.writeText(`/give ${minecraftNameForAccount(a)} ${x.item_id} ${x.quantity}`)});
+  $$('[data-deliver-purchase]').forEach(b=>b.onclick=async()=>{if(!state.account){alert('El administrador debe iniciar sesión con una cuenta.');return}const {error}=await supabase.from('store_purchases').update({status:'delivered',delivered_at:new Date().toISOString(),delivered_by:state.account.id}).eq('id',b.dataset.deliverPurchase).eq('status','pending');if(error)alert(error.message);else await loadAll()});
+}
+function renderStoreAdmin(){
+  const root=$("#storeItemAdminList");if(!root)return;
+  root.innerHTML=state.storeItems.map(x=>`<div class="card"><strong>${esc(x.display_name)}</strong><div>${esc(x.item_id)} · ${money(x.price)} créditos · cantidad ${x.default_quantity}</div><div class="row" style="margin-top:8px"><button class="secondary" data-toggle-store="${x.id}">${x.active?'Desactivar':'Activar'}</button><button class="danger" data-delete-store="${x.id}">Eliminar</button></div></div>`).join("")||'<div class="muted">Sin objetos cargados.</div>';
+  $$('[data-toggle-store]').forEach(b=>b.onclick=async()=>{const x=state.storeItems.find(y=>y.id===b.dataset.toggleStore);await supabase.from('store_items').update({active:!x.active}).eq('id',x.id);await loadAll()});
+  $$('[data-delete-store]').forEach(b=>b.onclick=async()=>{if(confirm('¿Eliminar este objeto?')){await supabase.from('store_items').delete().eq('id',b.dataset.deleteStore);await loadAll()}});
+}
+if($("#createStoreItem"))$("#createStoreItem").onclick=async()=>{const display_name=$("#storeItemName").value.trim(),item_id=$("#storeItemId").value.trim(),price=parseInt($("#storeItemPrice").value,10),default_quantity=parseInt($("#storeItemQuantity").value,10);if(!display_name||!item_id||price<1||default_quantity<1){alert('Completa todos los campos.');return}const {error}=await supabase.from('store_items').insert({display_name,item_id,price,default_quantity});if(error)alert(error.message);else{$("#storeItemName").value='';$("#storeItemId").value='';await loadAll()}};
+function renderChampionMarket(){
+  const root=$("#championBetMarket"),panel=$("#championBetPanel");if(!root||!panel)return;const tid=$("#betTournamentSelect")?.value,t=state.tournaments.find(x=>x.id===tid);panel.hidden=!t||isIndividualEvent(t);if(panel.hidden)return;
+  const ps=state.participants.filter(p=>p.tournament_id===tid),champ=state.tournamentChampions.find(x=>x.tournament_id===tid);
+  if(champ){root.innerHTML=`<div class="card"><strong>Campeón: ${esc(participantName(champ.participant_id))}</strong></div>`;return}
+  const roundRobin=t.format==='round-robin';const groupMatches=state.matches.filter(m=>m.tournament_id===tid&&m.phase==='group'&&m.side_a&&m.side_b);const allDone=groupMatches.length>0&&groupMatches.every(m=>['finished','walkover'].includes(m.status));const autoButton=state.admin&&roundRobin&&allDone?`<div class="card"><button id="resolveChampionByPoints">Resolver campeón por puntos</button><div class="muted">Se elegirá al primero de la tabla de posiciones.</div></div>`:'';
+  root.innerHTML=autoButton+ps.map(p=>{const o=state.championOdds.find(x=>x.tournament_id===tid&&x.participant_id===p.id&&x.active);return `<div class="card"><strong>${esc(p.display_name)}</strong><div class="row" style="margin-top:8px">${state.admin?`<input type="number" min="1.001" step="0.001" value="${o?.odds||2}" data-champ-odds="${p.id}" style="max-width:110px"><button data-save-champ-odds="${p.id}">Guardar cuota</button>`:o?`<span>x${Number(o.odds).toFixed(3)}</span><input type="number" min="1" value="50" data-champ-stake="${p.id}" style="max-width:110px"><button data-bet-champ="${p.id}">Apostar</button>`:'<span class="muted">Sin cuota</span>'}${state.admin?`<button class="secondary" data-set-champion="${p.id}">Declarar campeón</button>`:''}</div></div>`}).join('')||'<div class="muted">Sin participantes.</div>';
+  if($('#resolveChampionByPoints'))$('#resolveChampionByPoints').onclick=async()=>{const winner=standingsFor(tid)[0];if(!winner)return;const {error}=await supabase.rpc('resolve_tournament_champion',{p_tournament_id:tid,p_participant_id:winner.id,p_automatic:true});if(error)alert(error.message);else await loadAll()};
+  $$('[data-save-champ-odds]').forEach(b=>b.onclick=async()=>{const odds=Number($(`[data-champ-odds="${b.dataset.saveChampOdds}"]`).value);const {error}=await supabase.from('tournament_champion_odds').upsert({tournament_id:tid,participant_id:b.dataset.saveChampOdds,odds,active:true},{onConflict:'tournament_id,participant_id'});if(error)alert(error.message);else await loadAll()});
+  $$('[data-bet-champ]').forEach(b=>b.onclick=async()=>{if(!state.account){alert('Primero inicia sesión.');return}const stake=parseInt($(`[data-champ-stake="${b.dataset.betChamp}"]`).value,10);const {error}=await supabase.rpc('place_champion_bet',{p_account_id:state.account.id,p_tournament_id:tid,p_participant_id:b.dataset.betChamp,p_stake:stake});if(error)alert(error.message);else await loadAll()});
+  $$('[data-set-champion]').forEach(b=>b.onclick=async()=>{if(!confirm(`¿Declarar campeón a ${participantName(b.dataset.setChampion)}?`))return;const {error}=await supabase.rpc('resolve_tournament_champion',{p_tournament_id:tid,p_participant_id:b.dataset.setChampion,p_automatic:false});if(error)alert(error.message);else await loadAll()});
+}
 function renderGeneralStats(){
   const accountNames=new Set(state.accounts.map(a=>a.username.toLowerCase()));
   const rows=state.rankings.filter(r=>accountNames.has(r.name.toLowerCase())).map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.name)}</td>${state.admin?`<td>${r.elo}</td>`:""}<td>${r.wins}</td><td>${r.losses}</td><td>${r.kos_for}</td><td>${r.kos_against}</td></tr>`).join("");
@@ -2605,7 +2649,7 @@ function renderRewards(){
 $("#rewardDrawerButton").onclick=()=>$("#rewardDrawer").classList.toggle("open");
 $("#deliveryDrawerButton").onclick=()=>$("#deliveryDrawer").classList.toggle("open");
 
-for(const table of ["accounts","tournaments","tournament_participants","matches","bets","rewards","daily_spins","rankings","cashier_transactions","number_game_settings","number_game_sessions","number_game_rounds","mine_game_settings","mine_game_sessions","announcements","announcement_replies","polls","poll_options","poll_votes"]){
+for(const table of ["accounts","tournaments","tournament_participants","matches","bets","rewards","daily_spins","rankings","cashier_transactions","number_game_settings","number_game_sessions","number_game_rounds","mine_game_settings","mine_game_sessions","announcements","announcement_replies","polls","poll_options","poll_votes","store_items","store_purchases","tournament_champions","tournament_champion_odds"]){
   supabase.channel("rt-"+table).on("postgres_changes",{event:"*",schema:"public",table},async payload=>{
     const tid=payload.new?.tournament_id||payload.old?.tournament_id||$("#adminTournamentSelect")?.value;
     if(["tournaments","tournament_participants","matches"].includes(table)&&tid)await refreshTournamentState(tid);

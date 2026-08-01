@@ -48,6 +48,18 @@ begin
     raise exception 'El participante no pertenece al torneo';
   end if;
 
+  if exists (
+    select 1
+    from public.tournament_participants tp,
+         lateral jsonb_array_elements(coalesce(tp.members,'[]'::jsonb)) member
+    where tp.id = p_participant_id
+      and tp.tournament_id = p_tournament_id
+      and member->>'type' = 'account'
+      and member->>'id' = p_account_id::text
+  ) then
+    raise exception 'No puedes apostar por ti mismo';
+  end if;
+
   if p_market = 'champion' and exists (
     select 1 from public.tournament_champions
     where tournament_id = p_tournament_id and participant_id is not null

@@ -215,3 +215,13 @@ En Apuestas ahora existen dos pestañas: `Apostar` e `Historial de apuestas`. De
 ## v62 — cuotas generales y último lugar
 
 Los mercados se llaman `¿Quién ganará el torneo?` y `¿Quién quedará último?`. Cada cuenta solo puede apostar una vez por torneo en cada mercado y debe elegir un único jugador. Las cuotas usan el ELO oculto y las estadísticas generales acumuladas del jugador: victorias, derrotas, KO+ y KO-. El ELO influye en el cálculo, pero no se muestra en la interfaz.
+
+
+## v63 — bloqueo de apuestas propias
+
+No se puede apostar por uno mismo en los mercados de campeón o último lugar. La interfaz oculta el botón para el participante propio y Supabase también valida el bloqueo. Ejecuta una vez `ACTUALIZAR_BLOQUEO_APUESTAS_PROPIAS_V63.sql`.
+
+
+## v64 · Eliminar cuotas junto con el torneo
+
+Al eliminar un torneo, la página elimina primero todas sus cuotas de campeón/último lugar y después elimina el torneo. No requiere SQL nuevo.

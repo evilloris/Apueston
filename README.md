@@ -233,3 +233,8 @@ Ejecuta una vez `ACTUALIZAR_REEMBOLSO_APUESTAS_INVALIDAS_V65.sql`.
 - El botón **Revisar y reembolsar apuestas inválidas** corrige apuestas antiguas cuya selección o partido ya no existe.
 - Al guardar participantes o regenerar peleas, las apuestas activas afectadas se reembolsan antes de cambiar la estructura del torneo.
 - Las apuestas reembolsadas salen de **Apuestas vigentes** y pasan al historial.
+
+
+## v66 · Reapuesta después de reembolso
+
+Las apuestas reembolsadas ya no cuentan como una apuesta activa. Ejecuta `ACTUALIZAR_PERMITIR_REAPOSTAR_TRAS_REEMBOLSO_V66.sql` una sola vez en Supabase.

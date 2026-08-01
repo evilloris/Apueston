@@ -1016,7 +1016,7 @@ function tournamentPositionOdds(tid,market){
   const total=raw.reduce((n,x)=>n+x.weight,0)||1;
   return raw.map(x=>({...x,odds:Math.max(1.05,Math.min(25,0.90/(x.weight/total)))})).sort((a,b)=>a.odds-b.odds);
 }
-function hasTournamentMarketBet(tid,type){return !!state.account&&state.bets.some(b=>b.account_id===state.account.id&&b.tournament_id===tid&&b.bet_type===type)}
+function hasTournamentMarketBet(tid,type){return !!state.account&&state.bets.some(b=>b.account_id===state.account.id&&b.tournament_id===tid&&b.bet_type===type&&b.status!=='refunded')}
 function renderPositionMarket(rootId,market){
   const root=$(rootId),panel=market==='champion'?$('#championBetPanel'):$('#loserBetPanel');if(!root||!panel)return;
   const tid=$('#betTournamentSelect')?.value,t=state.tournaments.find(x=>x.id===tid);panel.hidden=!t||isIndividualEvent(t);if(panel.hidden)return;

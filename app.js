@@ -1643,16 +1643,38 @@ $("#confirmTournamentEntrants").onclick=()=>{
   tournamentDraftParticipants.set(tid,balancedTournamentParticipants(t,members));renderParticipantCards();
 };
 
+async function refundTournamentStructureBets(tid){
+  const {data,error}=await supabase.rpc("refund_tournament_bets_for_structure_change",{p_tournament_id:tid});
+  if(error)throw new Error("No se pudieron reembolsar las apuestas antes de modificar el torneo: "+error.message);
+  return Number(data||0);
+}
+
+if($("#reviewInvalidBetsButton"))$("#reviewInvalidBetsButton").onclick=async()=>{
+  const tid=$("#adminTournamentSelect").value;if(!tid)return;
+  const button=$("#reviewInvalidBetsButton");button.disabled=true;
+  try{
+    const {data,error}=await supabase.rpc("refund_invalid_bets",{p_tournament_id:tid});
+    if(error)throw error;
+    await loadAll();
+    $("#adminTournamentSelect").value=tid;
+    renderParticipantCards();renderMatchAdmin();renderMyBets();
+    alert(`${Number(data||0)} apuesta(s) inválida(s) reembolsada(s).`);
+  }catch(error){alert("No se pudieron revisar las apuestas: "+error.message)}
+  finally{button.disabled=false}
+};
+
 $("#saveParticipantsButton").onclick=async()=>{
   const tid=$("#adminTournamentSelect").value;if(!tid)return;
   let items;try{items=readParticipantCards()}catch(e){alert(e.message);return}
+  let refunded=0;
+  try{refunded=await refundTournamentStructureBets(tid)}catch(error){alert(error.message);return}
   await supabase.from("tournament_participants").delete().eq("tournament_id",tid);
   const rows=items.map(x=>({...x,tournament_id:tid}));
   const {error}=await supabase.from("tournament_participants").insert(rows);
   if(error){alert(error.message);return}
   tournamentDraftParticipants.delete(tid);
   await loadAll();$("#adminTournamentSelect").value=tid;renderParticipantCards();
-  alert("Participantes guardados.");
+  alert(`Participantes guardados.${refunded?` ${refunded} apuesta(s) activa(s) fueron reembolsada(s).`:""}`);
 };
 
 $("#fairPairingButton").onclick=()=>{
@@ -1668,6 +1690,8 @@ $("#generateFixture").onclick=async()=>{
   const groupNumbers=[...new Set(ps.map(p=>p.group_no))];
   for(const g of groupNumbers)if(ps.filter(p=>p.group_no===g).length<2){alert(`El grupo ${groupLetter(g)} necesita al menos 2 participantes.`);return}
 
+  let refunded=0;
+  try{refunded=await refundTournamentStructureBets(tid)}catch(error){alert(error.message);return}
   await supabase.from("matches").delete().eq("tournament_id",tid);
   let rows=[];let round=1;
   for(const g of groupNumbers.sort((a,b)=>a-b)){
@@ -1691,6 +1715,7 @@ $("#generateFixture").onclick=async()=>{
   if(error){alert(error.message);return}
   await supabase.from("tournaments").update({status:"active"}).eq("id",tid);
   await loadAll();$("#adminTournamentSelect").value=tid;renderMatchAdmin();renderKnockoutPanel();
+  if(refunded)alert(`${refunded} apuesta(s) activa(s) fueron reembolsada(s) antes de regenerar las peleas.`);
 };
 
 function localDatetimeValue(value){

@@ -225,3 +225,11 @@ No se puede apostar por uno mismo en los mercados de campeón o último lugar. L
 ## v64 · Eliminar cuotas junto con el torneo
 
 Al eliminar un torneo, la página elimina primero todas sus cuotas de campeón/último lugar y después elimina el torneo. No requiere SQL nuevo.
+
+## v65 · Apuestas inválidas
+
+Ejecuta una vez `ACTUALIZAR_REEMBOLSO_APUESTAS_INVALIDAS_V65.sql`.
+
+- El botón **Revisar y reembolsar apuestas inválidas** corrige apuestas antiguas cuya selección o partido ya no existe.
+- Al guardar participantes o regenerar peleas, las apuestas activas afectadas se reembolsan antes de cambiar la estructura del torneo.
+- Las apuestas reembolsadas salen de **Apuestas vigentes** y pasan al historial.

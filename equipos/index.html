@@ -1,0 +1,10 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#090d14"><title>Equipos · Poképachanga</title><link rel="stylesheet" href="../styles.css?v=67"><link rel="stylesheet" href="../live.css?v=67"></head><body>
+<header><div class="header-inner"><div class="brand">📊 Equipos · Poképachanga</div><a class="button-link secondary" href="../">← Volver</a><a class="button-link secondary" href="../pvp/">⚔️ PVP</a></div></header>
+<main class="live-main">
+<section class="panel"><h2>Torneo</h2><select id="tournamentSelect"></select></section>
+<section class="panel"><div class="live-heading"><div><h2>Mi equipo privado</h2><p class="muted">Solo tú ves todos tus Pokémon. Los demás ven cuadros negros hasta que un Pokémon sea utilizado en una pelea del torneo.</p></div><button id="teamLogin" class="secondary">Iniciar sesión de equipo</button></div><div id="myTeamAuth" class="muted">No autenticado.</div><div id="teamEditor" hidden><div class="grid"><div><label>Nombre del entrenador</label><input id="trainerName" placeholder="Ej.: Zapi"></div><div class="wide"><label>Pokémon registrados</label><textarea id="teamPokemon" rows="7" placeholder="Uno por línea o separados por coma"></textarea></div></div><button id="saveTeam" style="margin-top:12px">Guardar equipo</button></div></section>
+<section class="panel"><h2>Entrenadores y equipos revelados</h2><div id="rosterGrid" class="trainer-roster-grid"></div></section>
+<section class="panel"><h2>Estadísticas de jugadores por torneo</h2><div id="playerStats"></div></section>
+</main>
+<div class="modal" id="pokemonModal"><div class="dialog"><button class="close" data-close>×</button><h2 id="pokemonModalTitle">Pokémon</h2><div id="pokemonModalBody"></div></div></div>
+<script type="module" src="./equipos.js?v=67"></script></body></html>

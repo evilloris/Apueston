@@ -1,0 +1,25 @@
+CLASIFICACIÓN DE LOS 1025 POKÉMON
+
+Formato: NNNN - Nombre
+
+Criterio:
+- Las categorías son exclusivas: cada Pokémon aparece una sola vez.
+- 'Iniciales' incluye las tres fases de cada línea inicial.
+- 'Pseudolegendarios' incluye las tres fases de cada línea pseudo.
+- 'Fósiles' incluye todos los Pokémon restaurados o combinados a partir de fósiles.
+- 'Fase específica' contiene Cosmog y Cosmoem, separados por ser fases previas de legendarios.
+- Type: Null y Silvally están en sublegendarios.
+
+CANTIDADES:
+- Comunes: 764
+- Iniciales: 81
+- Fosiles: 25
+- Pseudolegendarios: 30
+- Legendarios: 25
+- Sublegendarios: 44
+- Miticos: 23
+- Ultraentes: 11
+- Paradojas: 20
+- Fase Especifica: 2
+
+TOTAL: 1025

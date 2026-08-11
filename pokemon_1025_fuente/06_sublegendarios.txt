@@ -1,0 +1,44 @@
+0144 - Articuno
+0145 - Zapdos
+0146 - Moltres
+0243 - Raikou
+0244 - Entei
+0245 - Suicune
+0377 - Regirock
+0378 - Regice
+0379 - Registeel
+0380 - Latias
+0381 - Latios
+0480 - Uxie
+0481 - Mesprit
+0482 - Azelf
+0485 - Heatran
+0486 - Regigigas
+0488 - Cresselia
+0638 - Cobalion
+0639 - Terrakion
+0640 - Virizion
+0641 - Tornadus
+0642 - Thundurus
+0645 - Landorus
+0772 - Type: Null
+0773 - Silvally
+0785 - Tapu Koko
+0786 - Tapu Lele
+0787 - Tapu Bulu
+0788 - Tapu Fini
+0891 - Kubfu
+0892 - Urshifu
+0894 - Regieleki
+0895 - Regidrago
+0896 - Glastrier
+0897 - Spectrier
+0905 - Enamorus
+1001 - Wo-Chien
+1002 - Chien-Pao
+1003 - Ting-Lu
+1004 - Chi-Yu
+1014 - Okidogi
+1015 - Munkidori
+1016 - Fezandipiti
+1017 - Ogerpon

@@ -347,3 +347,6 @@ body.admin .minigame-subtabs:not([hidden]){display:flex !important}
 .delivery-batch-actions button{margin:0}
 .delivery-reward-row{display:flex;align-items:flex-start;gap:10px}
 .delivery-reward-card{padding:10px}
+
+/* v67 · enlaces de navegación externos */
+.nav .nav-link{appearance:none;text-decoration:none;color:inherit;background:#121d2d;border:1px solid #2b3b53;border-radius:8px;padding:10px 14px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}.nav .nav-link:hover{border-color:#facc15;color:#facc15}

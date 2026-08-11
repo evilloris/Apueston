@@ -1,0 +1,11 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#090d14"><title>PVP en vivo · Poképachanga</title><link rel="stylesheet" href="../styles.css?v=67"><link rel="stylesheet" href="../live.css?v=67"></head><body>
+<header><div class="header-inner"><div class="brand">⚔️ PVP · Poképachanga</div><a class="button-link secondary" href="../">← Volver</a><a class="button-link secondary" href="../equipos/">📊 Equipos</a><button id="adminToggle" class="secondary">🛠️ Admin PVP</button></div></header>
+<main class="live-main">
+  <section class="panel"><div class="live-heading"><div><h2>Peleas en vivo</h2><p class="muted">Las peleas aparecen cuando el mod habilita <code>/t torneo jugador1 jugador2</code> o <code>/pvp jugador1 jugador2</code>.</p></div><select id="sessionSelect"></select></div></section>
+  <section id="emptyState" class="panel"><h2>Sin pelea activa</h2><p class="muted">Esperando una sesión habilitada desde el servidor.</p></section>
+  <section id="livePanel" hidden>
+    <div class="panel battle-scoreboard"><div class="live-pill" id="liveStatus">● EN VIVO</div><div class="battle-title" id="battleTitle"></div><div class="battle-columns"><div class="trainer-side"><h2 id="playerA"></h2><div class="big-score" id="scoreA">0</div><div id="teamA" class="pokemon-live-grid"></div></div><div class="versus">VS</div><div class="trainer-side"><h2 id="playerB"></h2><div class="big-score" id="scoreB">0</div><div id="teamB" class="pokemon-live-grid"></div></div></div></div>
+    <div class="panel"><h2>Registro de batalla</h2><div id="timeline" class="battle-timeline"></div></div>
+    <div class="panel admin-box" id="adminBox" hidden><h2>Administración PVP</h2><p class="muted">El mod actualiza la pelea automáticamente. Estos controles son para confirmar el final, cancelar o preparar un rematch.</p><div class="row"><button id="finishBattle">Confirmar final</button><button id="rematchBattle" class="secondary">Rematch</button><button id="cancelBattle" class="danger">Cancelar sesión</button></div><div id="adminResult" class="muted"></div></div>
+  </section>
+</main><script type="module" src="./pvp.js?v=67"></script></body></html>
